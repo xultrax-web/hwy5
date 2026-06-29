@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://calcup26.local/schemas/live-source-schema.json",
+  "title": "CALCUP26 Live Source Data",
+  "type": "object",
+  "required": ["sourceId", "provider", "kind", "status"],
+  "properties": {
+    "sourceId": { "type": "string" },
+    "provider": {
+      "type": "string",
+      "enum": ["glympse", "google", "caltrans", "pems", "rwis", "local-simulation", "gemini-research"]
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["location", "traffic", "weather", "air-quality", "cctv", "cms", "lane-closure", "road-condition", "telemetry", "poi"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["planned", "available", "active", "fallback", "blocked", "disabled"]
+    },
+    "endpoint": { "type": "string" },
+    "requiresSecret": { "type": "boolean", "default": false },
+    "refreshSeconds": { "type": "number" },
+    "mappedFields": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "uiTargets": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["dashboard", "first-person", "drone", "overhead", "source-panel", "debug"]
+      }
+    },
+    "notes": { "type": "string" }
+  }
+}

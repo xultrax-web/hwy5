@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://calcup26.local/schemas/route-schema.json",
+  "title": "CALCUP26 I-5 Route Data",
+  "type": "object",
+  "required": ["routeId", "origin", "destination", "segments", "landmarks"],
+  "properties": {
+    "routeId": {
+      "type": "string",
+      "examples": ["irvine-to-alameda-i5"]
+    },
+    "origin": {
+      "$ref": "#/$defs/place"
+    },
+    "destination": {
+      "$ref": "#/$defs/place"
+    },
+    "totalMiles": {
+      "type": "number"
+    },
+    "segments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/segment"
+      }
+    },
+    "landmarks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/landmark"
+      }
+    },
+    "exits": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/exit"
+      }
+    }
+  },
+  "$defs": {
+    "place": {
+      "type": "object",
+      "required": ["name", "lat", "lng"],
+      "properties": {
+        "name": { "type": "string" },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "county": { "type": "string" },
+        "state": { "type": "string", "default": "CA" }
+      }
+    },
+    "segment": {
+      "type": "object",
+      "required": ["id", "name", "from", "to", "highway"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "highway": { "type": "string", "examples": ["I-5", "I-580", "I-880"] },
+        "from": { "$ref": "#/$defs/place" },
+        "to": { "$ref": "#/$defs/place" },
+        "approxStartMile": { "type": "number" },
+        "approxEndMile": { "type": "number" },
+        "caltransDistrict": { "type": "string" },
+        "postmileStart": { "type": "string" },
+        "postmileEnd": { "type": "string" },
+        "terrain": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["urban", "mountain", "grade", "valley", "agricultural", "bay-area", "interchange"]
+          }
+        },
+        "hazards": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "landmark": {
+      "type": "object",
+      "required": ["id", "name", "kind", "lat", "lng"],
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "kind": {
+          "type": "string",
+          "enum": ["city", "pass", "lake", "rest-area", "weigh-station", "interchange", "hazard-zone", "camera", "cms", "poi"]
+        },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "routeMile": { "type": "number" },
+        "postmile": { "type": "string" },
+        "county": { "type": "string" },
+        "dashboardPriority": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "arBehavior": {
+          "type": "string",
+          "enum": ["pin", "billboard", "warning", "distance-card", "hidden"],
+          "default": "pin"
+        }
+      }
+    },
+    "exit": {
+      "type": "object",
+      "required": ["exitId", "label", "route"],
+      "properties": {
+        "exitId": { "type": "string" },
+        "exitNumber": { "type": "string" },
+        "label": { "type": "string" },
+        "route": { "type": "string" },
+        "postmile": { "type": "string" },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "source": { "type": "string" }
+      }
+    }
+  }
+}

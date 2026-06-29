@@ -1,0 +1,1668 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CALCUP26 · I-5 Live Journey</title>
+  <link rel="icon" href="i5-logo.png">
+  <style>
+    :root {
+      /* operator / mission-control base */
+      --bg: #05080c;
+      --bg2: #080d14;
+      --panel: rgba(10,16,24,.82);
+      --panel-solid: #0a121b;
+      --line: rgba(120,180,210,.16);
+      --line-strong: rgba(120,190,220,.34);
+      --ink: #eaf4f6;
+      --muted: #8b9bab;
+      --dim: #5d6b78;
+      /* holographic accents (Google-AR / Ingress energy) */
+      --teal: #34e3c4;
+      --teal-dim: rgba(52,227,196,.16);
+      --blue: #54a9ff;
+      --blue-dim: rgba(84,169,255,.16);
+      /* automotive accent */
+      --amber: #f6b65c;
+      --warn: #ff7a59;
+      --good: #5fd08a;
+      --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, input, select { font: inherit; color: inherit; }
+
+    .app {
+      height: 100vh;
+      display: grid;
+      grid-template-rows: 54px 1fr;
+      background:
+        radial-gradient(1200px 500px at 70% -10%, rgba(84,169,255,.08), transparent 60%),
+        var(--bg);
+    }
+
+    /* ---------- top status strip ---------- */
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      padding: 0 16px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(12,20,30,.9), rgba(6,10,15,.9));
+      position: relative;
+      z-index: 40;
+    }
+    .brand { display: flex; align-items: center; gap: 11px; }
+    .brand .shield { width: 34px; height: 34px; object-fit: contain; filter: drop-shadow(0 1px 3px rgba(0,0,0,.6)); }
+    .wordmark { display: flex; flex-direction: column; line-height: 1.05; }
+    .wordmark b { font-size: 14px; letter-spacing: 2.5px; font-weight: 700; }
+    .wordmark span { font-size: 10.5px; letter-spacing: 1.2px; color: var(--muted); font-family: var(--mono); }
+
+    .status-strip { display: flex; align-items: center; gap: 8px; margin-left: 6px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 7px;
+      height: 28px; padding: 0 11px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: rgba(255,255,255,.02);
+      font-size: 11.5px; color: var(--muted);
+      white-space: nowrap;
+    }
+    .chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 8px currentColor; color: var(--warn); flex: 0 0 auto; }
+    .chip .dot.live { background: var(--good); color: var(--good); }
+    .chip .dot.warn { background: var(--amber); color: var(--amber); }
+    .chip.mono { font-family: var(--mono); font-size: 11px; color: var(--ink); }
+    .chip b { color: var(--ink); font-weight: 600; }
+
+    .spacer { flex: 1; }
+    .top-actions { display: flex; gap: 7px; }
+    .btn {
+      height: 32px; padding: 0 13px;
+      border: 1px solid var(--line-strong);
+      background: rgba(255,255,255,.03);
+      border-radius: 5px; cursor: pointer;
+      font-size: 12px; letter-spacing: .3px;
+      display: inline-flex; align-items: center; gap: 7px;
+      transition: border-color .15s, background .15s, color .15s;
+    }
+    .btn:hover { border-color: var(--teal); color: #fff; }
+    .btn.primary { background: var(--teal-dim); border-color: rgba(52,227,196,.5); color: #d6fff6; }
+    .btn.primary:hover { background: rgba(52,227,196,.24); }
+    .btn.on { border-color: var(--teal); color: var(--teal); background: var(--teal-dim); }
+
+    /* ---------- stage ---------- */
+    .stage { position: relative; overflow: hidden; min-height: 0; background: #000; }
+    #mainCanvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+    /* automotive vs operator mood layers (CSS, cheap) */
+    .vignette { position: absolute; inset: 0; pointer-events: none; z-index: 5;
+      box-shadow: inset 0 0 240px rgba(0,0,0,.6); }
+    .app[data-view="first"] .vignette { box-shadow: inset 0 -90px 180px rgba(0,0,0,.5), inset 0 0 220px rgba(0,0,0,.4); }
+    .app[data-view="drone"] .vignette {
+      box-shadow: inset 0 0 200px rgba(0,20,30,.7);
+      background:
+        repeating-linear-gradient(0deg, transparent 0 3px, rgba(0,0,0,.05) 3px 4px);
+    }
+    .app[data-view="overhead"] .vignette { box-shadow: inset 0 0 160px rgba(0,0,0,.32); }
+    .app[data-view="overhead"] .ar-head { display: none; }
+    /* operator corner brackets */
+    .opframe { position: absolute; inset: 14px; pointer-events: none; z-index: 8; display: none; }
+    .app[data-view="drone"] .opframe { display: block; }
+    .opframe i { position: absolute; width: 26px; height: 26px; border: 1.5px solid var(--line-strong); }
+    .opframe i.tl { left: 0; top: 0; border-right: 0; border-bottom: 0; }
+    .opframe i.tr { right: 0; top: 0; border-left: 0; border-bottom: 0; }
+    .opframe i.bl { left: 0; bottom: 0; border-right: 0; border-top: 0; }
+    .opframe i.br { right: 0; bottom: 0; border-left: 0; border-top: 0; }
+
+    /* AR header (top-left) */
+    .ar-head { position: absolute; left: 22px; top: 20px; z-index: 12; pointer-events: none; }
+    .ar-mode { font-family: var(--mono); font-size: 11px; letter-spacing: 3px; color: var(--muted); }
+    .ar-sign { font-size: 30px; font-weight: 700; letter-spacing: 1px; margin-top: 3px;
+      text-shadow: 0 2px 14px rgba(0,0,0,.7); }
+    .app[data-view="first"] .ar-sign { color: #fff; }
+    .app[data-view="drone"] .ar-sign { color: var(--teal); text-shadow: 0 0 18px rgba(52,227,196,.5); }
+    .ar-sub { font-family: var(--mono); font-size: 11.5px; color: var(--muted); margin-top: 5px; }
+
+    /* mode switch (bottom-left) */
+    .mode-switch {
+      position: absolute; left: 22px; bottom: 96px; z-index: 14;
+      display: flex; gap: 0; border: 1px solid var(--line-strong);
+      border-radius: 7px; overflow: hidden; backdrop-filter: blur(8px);
+      background: var(--panel);
+    }
+    .mode-switch button {
+      border: 0; background: transparent; cursor: pointer;
+      padding: 9px 15px; font-size: 12px; letter-spacing: .4px; color: var(--muted);
+      border-right: 1px solid var(--line); transition: all .15s;
+    }
+    .mode-switch button:last-child { border-right: 0; }
+    .mode-switch button:hover { color: var(--ink); }
+    .mode-switch button.active { color: #021; background: var(--teal); font-weight: 600; }
+    .app[data-view="first"] .mode-switch button.active { background: var(--amber); color: #2a1c05; }
+    .app[data-view="overhead"] .mode-switch button.active { background: #1a73e8; color: #fff; }
+
+    /* preview thumbnails (bottom-right) */
+    .previews { position: absolute; right: 22px; bottom: 18px; z-index: 14; display: flex; gap: 12px; }
+    .prev {
+      position: relative; width: 186px; height: 110px; padding: 0;
+      border: 1px solid var(--line-strong); border-radius: 7px; overflow: hidden;
+      cursor: pointer; background: #000;
+      box-shadow: 0 8px 24px rgba(0,0,0,.5);
+      transition: border-color .15s, transform .15s;
+    }
+    .prev:hover { border-color: var(--teal); transform: translateY(-2px); }
+    .prev canvas { width: 100%; height: 100%; display: block; }
+    .prev span {
+      position: absolute; left: 8px; bottom: 6px;
+      font-family: var(--mono); font-size: 10px; letter-spacing: 1.5px;
+      color: #fff; text-shadow: 0 1px 4px #000; pointer-events: none;
+    }
+    .prev::after { content: "SWITCH"; position: absolute; right: 8px; top: 7px; font-family: var(--mono); font-size: 9px; letter-spacing: 1px; color: var(--teal); opacity: 0; transition: opacity .15s; }
+    .prev:hover::after { opacity: 1; }
+
+    /* AR data rail (bottom center) */
+    .ar-rail {
+      position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%);
+      z-index: 13; display: flex; gap: 9px; align-items: stretch;
+      max-width: 60vw; flex-wrap: wrap; justify-content: center;
+    }
+    .stat {
+      min-width: 92px; padding: 8px 13px; border-radius: 8px;
+      background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(9px);
+    }
+    .app[data-view="first"] .stat { border-color: rgba(246,182,92,.22); background: rgba(14,12,8,.6); }
+    .app[data-view="drone"] .stat, .app[data-view="overhead"] .stat { border-color: rgba(52,227,196,.22); }
+    .app[data-view="overhead"] .stat { border-color: rgba(26,115,232,.3); }
+    .stat .k { font-family: var(--mono); font-size: 9.5px; letter-spacing: 1.6px; color: var(--muted); }
+    .stat .v { font-size: 21px; font-weight: 700; line-height: 1.1; margin-top: 2px; }
+    .stat .v small { font-size: 11px; font-weight: 500; color: var(--muted); }
+    .stat.accent .v { color: var(--amber); }
+    .app[data-view="drone"] .stat.accent .v, .app[data-view="overhead"] .stat.accent .v { color: var(--teal); }
+    .app[data-view="overhead"] .stat.accent .v { color: #4f8cf7; }
+    .stat.traffic { display: none; }
+    .app[data-view="drone"] .stat.traffic, .app[data-view="overhead"] .stat.traffic { display: block; }
+
+    /* overhead layer toggles (top-right of stage) */
+    .layers { position: absolute; right: 22px; top: 20px; z-index: 14; display: none; flex-direction: column; gap: 6px; align-items: flex-end; }
+    .app[data-view="overhead"] .layers { display: flex; top: 56px; }
+    .layers .lbtn {
+      font-family: var(--mono); font-size: 11px; letter-spacing: .8px;
+      padding: 6px 11px; border: 1px solid var(--line); border-radius: 5px;
+      background: var(--panel); color: var(--muted); cursor: pointer; backdrop-filter: blur(8px);
+      display: flex; align-items: center; gap: 8px; min-width: 132px; justify-content: space-between;
+    }
+    .layers .lbtn .sw { width: 22px; height: 12px; border-radius: 7px; background: rgba(255,255,255,.12); position: relative; transition: background .15s; }
+    .layers .lbtn .sw::after { content: ""; position: absolute; top: 1px; left: 1px; width: 10px; height: 10px; border-radius: 50%; background: #6b7785; transition: all .15s; }
+    .layers .lbtn.on { color: #4f8cf7; border-color: rgba(26,115,232,.5); }
+    .layers .lbtn.on .sw { background: rgba(26,115,232,.18); }
+    .layers .lbtn.on .sw::after { left: 11px; background: #1a73e8; }
+
+    /* google overlay panes */
+    #googleMapFrame, #googleTrafficMap {
+      position: absolute; inset: 0; width: 100%; height: 100%; border: 0; z-index: 6; display: none; background: #0a121b;
+    }
+    #googleMapFrame.show, #googleTrafficMap.show { display: block; }
+
+    /* ---------- slide panels ---------- */
+    .panel-base {
+      position: absolute; top: 54px; bottom: 0; z-index: 60;
+      width: 332px; background: var(--panel-solid);
+      overflow-y: auto; transition: transform .26s cubic-bezier(.4,0,.2,1);
+      box-shadow: 0 0 50px rgba(0,0,0,.6);
+    }
+    .settings { left: 0; border-right: 1px solid var(--line-strong); transform: translateX(-101%); }
+    .settings.open { transform: translateX(0); }
+    .drawer { right: 0; border-left: 1px solid var(--line-strong); transform: translateX(101%); width: 360px; }
+    .drawer.open { transform: translateX(0); }
+
+    .sec { padding: 16px 18px; border-bottom: 1px solid var(--line); }
+    .sec h2 { margin: 0 0 12px; font-size: 11px; letter-spacing: 2px; color: var(--teal); font-family: var(--mono); font-weight: 600; text-transform: uppercase; }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; padding: 13px 18px; border-bottom: 1px solid var(--line-strong); position: sticky; top: 0; background: var(--panel-solid); z-index: 2; }
+    .panel-head .t { font-size: 13px; letter-spacing: 1.5px; font-family: var(--mono); color: var(--ink); }
+    .panel-head .x { border: 1px solid var(--line); background: transparent; width: 28px; height: 28px; border-radius: 5px; cursor: pointer; color: var(--muted); }
+    .panel-head .x:hover { color: #fff; border-color: var(--teal); }
+
+    .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    .seg button { padding: 9px; border: 1px solid var(--line); background: rgba(255,255,255,.02); border-radius: 6px; cursor: pointer; color: var(--muted); font-size: 12.5px; }
+    .seg button.active { background: var(--teal-dim); border-color: rgba(52,227,196,.5); color: var(--teal); }
+    label { display: block; font-size: 11px; color: var(--muted); margin: 11px 0 5px; font-family: var(--mono); letter-spacing: .5px; }
+    input, select { width: 100%; background: #060b11; border: 1px solid var(--line); border-radius: 6px; padding: 9px 10px; color: var(--ink); }
+    input:focus, select:focus { outline: 0; border-color: var(--teal); }
+    input[type="range"] { padding: 0; accent-color: var(--teal); }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+    .full-btn { width: 100%; margin-top: 11px; padding: 10px; border: 1px solid var(--line-strong); background: rgba(255,255,255,.03); border-radius: 6px; cursor: pointer; }
+    .full-btn:hover { border-color: var(--teal); }
+    .hint { font-size: 11.5px; color: var(--dim); line-height: 1.5; margin: 10px 0 0; }
+    .mini-status { margin-top: 9px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px; background: #060b11; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+    .log { font-family: var(--mono); font-size: 11px; color: #9fc6bd; line-height: 1.6; white-space: pre-wrap; background: #060b11; border: 1px solid var(--line); border-radius: 6px; padding: 10px; max-height: 150px; overflow: auto; }
+
+    /* route intel drawer */
+    .intel-now { padding: 14px 18px; background: linear-gradient(180deg, rgba(52,227,196,.08), transparent); border-bottom: 1px solid var(--line); }
+    .intel-now .seg-name { font-size: 17px; font-weight: 700; }
+    .intel-now .seg-sec { font-family: var(--mono); font-size: 11px; color: var(--teal); letter-spacing: 1px; margin-top: 3px; }
+    .intel-now .note { font-size: 12.5px; color: var(--muted); line-height: 1.5; margin-top: 9px; }
+    .intel-metrics { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-top: 12px; }
+    .intel-metrics .m { background: rgba(255,255,255,.02); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+    .intel-metrics .m span { display: block; font-family: var(--mono); font-size: 9px; letter-spacing: 1px; color: var(--dim); }
+    .intel-metrics .m strong { font-size: 15px; }
+
+    .timeline { position: relative; padding: 6px 18px 20px 34px; }
+    .timeline::before { content: ""; position: absolute; left: 23px; top: 12px; bottom: 16px; width: 2px; background: linear-gradient(180deg, var(--good), var(--teal) 30%, var(--line) 60%); }
+    .stop { position: relative; padding: 10px 0; }
+    .stop::before { content: ""; position: absolute; left: -16px; top: 14px; width: 11px; height: 11px; border-radius: 50%; background: var(--bg2); border: 2px solid var(--dim); }
+    .stop.passed::before { background: var(--good); border-color: var(--good); box-shadow: 0 0 8px rgba(95,208,138,.6); }
+    .stop.next::before { background: var(--teal); border-color: var(--teal); box-shadow: 0 0 12px var(--teal); }
+    .stop .st { font-weight: 700; font-size: 13.5px; }
+    .stop .sd { font-family: var(--mono); font-size: 10.5px; color: var(--teal); margin-top: 3px; }
+    .stop.passed .sd { color: var(--dim); }
+    .stop .sn { font-size: 11.5px; color: var(--muted); line-height: 1.45; margin-top: 5px; }
+
+    @media (max-width: 760px) {
+      .previews { display: none; }
+      .ar-rail { max-width: 92vw; bottom: 14px; }
+      .mode-switch { bottom: 86px; left: 12px; }
+      .ar-head { left: 14px; top: 14px; }
+      .panel-base, .drawer { width: 88vw; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app" id="app" data-view="first">
+    <header class="topbar">
+      <div class="brand">
+        <img class="shield" src="i5-logo.png" alt="California Interstate 5 shield">
+        <div class="wordmark"><b>CALCUP26</b><span>I-5 LIVE · IRVINE → ALAMEDA</span></div>
+      </div>
+      <div class="status-strip">
+        <div class="chip"><span id="liveDot" class="dot warn"></span><span id="liveText">Preparing live adapter</span></div>
+        <div class="chip mono" id="gpsChip">-- , --</div>
+        <div class="chip mono" id="syncChip">SYNC --</div>
+      </div>
+      <div class="spacer"></div>
+      <div class="top-actions">
+        <button class="btn" id="btnSettings">Controls</button>
+        <button class="btn" id="btnDrawer">Route Intel</button>
+        <button class="btn" id="playPause">Pause</button>
+        <button class="btn primary" id="pollNow">Sync Tag</button>
+      </div>
+    </header>
+
+    <section class="stage" id="stage">
+      <canvas id="mainCanvas"></canvas>
+      <div class="vignette"></div>
+      <div class="opframe"><i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i></div>
+
+      <iframe id="googleMapFrame" title="Google Maps overhead" loading="lazy"
+        referrerpolicy="no-referrer-when-downgrade"
+        src="https://www.google.com/maps?q=34.639104,-118.746817&z=9&output=embed"></iframe>
+      <div id="googleTrafficMap" aria-label="Google traffic map"></div>
+
+      <div class="ar-head">
+        <div class="ar-mode" id="arMode">FIRST PERSON</div>
+        <div class="ar-sign" id="roadSign">I-5 NORTH</div>
+        <div class="ar-sub" id="arSub">--</div>
+      </div>
+
+      <div class="layers" id="layers">
+        <button class="lbtn on" data-layer="traffic">TRAFFIC<span class="sw"></span></button>
+        <button class="lbtn on" data-layer="milestones">MILESTONES<span class="sw"></span></button>
+        <button class="lbtn on" data-layer="intel">ROUTE INTEL<span class="sw"></span></button>
+        <button class="lbtn" data-layer="google">GOOGLE PANE<span class="sw"></span></button>
+      </div>
+
+      <div class="mode-switch" id="modeSwitch">
+        <button data-mode="first" class="active">First Person</button>
+        <button data-mode="drone">Drone</button>
+        <button data-mode="overhead">Overhead</button>
+      </div>
+
+      <div class="ar-rail">
+        <div class="stat accent"><div class="k">SPEED</div><div class="v"><span id="vSpeed">--</span> <small>mph</small></div></div>
+        <div class="stat"><div class="k">ROUTE MILE</div><div class="v" id="vMile">0</div></div>
+        <div class="stat"><div class="k">NEXT</div><div class="v" id="vNext" style="font-size:14px">--</div></div>
+        <div class="stat"><div class="k">SECTION</div><div class="v" id="vSection" style="font-size:13px">--</div></div>
+        <div class="stat"><div class="k">CA I-5 MARKER</div><div class="v" id="vMarker" style="font-size:16px">--</div></div>
+        <div class="stat traffic"><div class="k">TRAFFIC</div><div class="v" id="vTraffic" style="font-size:15px">--</div></div>
+      </div>
+
+      <div class="previews">
+        <button class="prev" data-prev="0"><canvas id="prevA"></canvas><span id="prevALabel">DRONE</span></button>
+        <button class="prev" data-prev="1"><canvas id="prevB"></canvas><span id="prevBLabel">OVERHEAD</span></button>
+      </div>
+    </section>
+  </div>
+
+  <!-- Controls panel -->
+  <aside class="panel-base settings" id="settingsPanel">
+    <div class="panel-head"><div class="t">CONTROLS</div><button class="x" id="closeSettings">✕</button></div>
+    <div class="sec">
+      <h2>Live Source</h2>
+      <div class="seg">
+        <button id="modeLive" class="active">Live tag</button>
+        <button id="modeSim">Sim drive</button>
+      </div>
+      <p class="hint">Live mode polls the public Glympse tag <b style="color:var(--teal)">!calcup26</b> and decodes its latest trail point. Sim drive runs the route locally.</p>
+    </div>
+    <div class="sec">
+      <h2>Manual GPS Fallback</h2>
+      <div class="row">
+        <div><label for="manualLat">Latitude</label><input id="manualLat" value="34.639104" inputmode="decimal"></div>
+        <div><label for="manualLng">Longitude</label><input id="manualLng" value="-118.746817" inputmode="decimal"></div>
+      </div>
+      <button class="full-btn" id="applyManual">Apply GPS Point</button>
+      <p class="hint">For browser/CORS failures or an expired tag.</p>
+    </div>
+    <div class="sec">
+      <h2>Sim Speed</h2>
+      <input id="speedScale" type="range" min="0.2" max="8" step="0.2" value="2.6">
+    </div>
+    <div class="sec">
+      <h2>Google Traffic Layer</h2>
+      <label for="googleMapsKey">Maps JavaScript API key</label>
+      <input id="googleMapsKey" type="password" autocomplete="off" placeholder="Optional — paste to enable real TrafficLayer">
+      <button class="full-btn" id="enableGoogleTraffic">Enable TrafficLayer</button>
+      <div id="trafficStatus" class="mini-status">No API key loaded. Using the live-speed traffic model (drone &amp; overhead) and the Google Maps link fallback.</div>
+    </div>
+    <div class="sec">
+      <h2>Adapter Log</h2>
+      <div id="log" class="log"></div>
+    </div>
+  </aside>
+
+  <!-- Route Intel drawer -->
+  <aside class="panel-base drawer" id="drawerPanel">
+    <div class="panel-head"><div class="t">ROUTE INTELLIGENCE</div><button class="x" id="closeDrawer">✕</button></div>
+    <div class="intel-now">
+      <div class="seg-name" id="intelName">--</div>
+      <div class="seg-sec" id="intelSec">--</div>
+      <div class="note" id="intelNote">Waiting for route position…</div>
+      <div class="intel-metrics">
+        <div class="m"><span>PROGRESS</span><strong id="intelProg">0%</strong></div>
+        <div class="m"><span>TRAFFIC</span><strong id="intelTraffic">--</strong></div>
+        <div class="m"><span>DELAY</span><strong id="intelDelay">-- min</strong></div>
+      </div>
+    </div>
+    <div class="sec"><h2>Landmarks &amp; Corridor Notes</h2></div>
+    <div id="timeline" class="timeline"></div>
+  </aside>
+
+  <script>
+  /* ============================================================
+     CALCUP26 I-5 Live Journey Simulator
+     Live data layer preserved from handoff. Rendering reimagined:
+       - First person : premium automotive AR windshield (no traffic)
+       - Drone        : holographic operator chase console
+       - Overhead     : holographic operator ops map
+     ============================================================ */
+
+    /* ---------- ROUTE & RESEARCHED MILESTONE DATA (preserved) ---------- */
+    const route = [
+      { name: "Irvine", lat: 33.6846, lng: -117.8265, kind: "start", note: "The southern Orange County leg runs on the Santa Ana Freeway before I-5 bends northwest toward Los Angeles.", article: "Santa Ana Freeway" },
+      { name: "Anaheim", lat: 33.8366, lng: -117.9143, kind: "city", note: "Dense Orange County interchanges: Disney-adjacent traffic, SR 57, SR 91, and the Santa Ana Freeway corridor.", article: "Orange County urban section" },
+      { name: "Downtown Los Angeles", lat: 34.0522, lng: -118.2437, kind: "city", note: "I-5 passes the Eastside of Los Angeles and interchanges with the US 101 and I-10 systems before turning north.", article: "Los Angeles freeway web" },
+      { name: "Burbank / San Fernando Valley", lat: 34.1808, lng: -118.3089, kind: "city", note: "The route follows the Golden State Freeway through Glendale, Burbank, and the San Fernando Valley.", article: "Golden State Freeway" },
+      { name: "Santa Clarita", lat: 34.3917, lng: -118.5426, kind: "city", note: "The freeway leaves the Los Angeles Basin and starts the climb toward Castaic and the Tejon corridor.", article: "North Los Angeles County climb" },
+      { name: "Castaic Lake", lat: 34.5002, lng: -118.6230, kind: "landmark", note: "Castaic marks the transition from suburban freeway to mountain approach toward the Grapevine.", article: "Castaic approach" },
+      { name: "Gorman", lat: 34.7968, lng: -118.8520, kind: "landmark", note: "High desert mountain community near the top of the Grapevine approach; weather and grades start to matter here.", article: "Grapevine approach" },
+      { name: "Grapevine / Tejon Pass", lat: 34.8826, lng: -118.9222, kind: "landmark", note: "I-5 crosses Tejon Pass, then drops through the steep Five Mile Grade into the San Joaquin Valley.", article: "Tejon Pass and Five Mile Grade" },
+      { name: "Frazier Park", lat: 34.8228, lng: -118.9448, kind: "landmark", note: "Mountain-side access point near the pass; useful context for snow closures, wind, and grade-driven slow traffic.", article: "Mountain access" },
+      { name: "Wheeler Ridge", lat: 35.0052, lng: -118.9563, kind: "landmark", note: "At the valley floor, Route 99 splits north toward Bakersfield while I-5 continues as the West Side Freeway.", article: "Route 99 split" },
+      { name: "Buttonwillow", lat: 35.4005, lng: -119.4696, kind: "landmark", note: "West Side Freeway service stop area in the San Joaquin Valley, with long agricultural stretches between exits.", article: "West Side Freeway" },
+      { name: "Lost Hills", lat: 35.6161, lng: -119.6943, kind: "landmark", note: "Another key West Side service cluster before the route continues past open farms, canals, and energy infrastructure.", article: "Central Valley services" },
+      { name: "Kettleman City", lat: 36.0083, lng: -119.9607, kind: "city", note: "Major long-haul stop near SR 41 and the midpoint rhythm of the valley drive.", article: "Central Valley crossroads" },
+      { name: "Coalinga", lat: 36.1397, lng: -120.3602, kind: "landmark", note: "The article notes I-5 runs near the California Aqueduct and a major power-line corridor in this west valley stretch.", article: "Aqueduct and power corridor" },
+      { name: "Harris Ranch", lat: 36.2540, lng: -120.2378, kind: "landmark", note: "Recognizable I-5 travel landmark and rest/food cluster on the west side of the San Joaquin Valley.", article: "West Side landmark" },
+      { name: "Los Banos", lat: 37.0583, lng: -120.8499, kind: "city", note: "Northern valley approach where I-5 begins setting up the SR 152 crossing toward the coast and Bay Area.", article: "Northern San Joaquin Valley" },
+      { name: "Santa Nella / SR 152", lat: 37.0977, lng: -121.0160, kind: "city", note: "SR 152 connects west toward Gilroy and passes near San Luis Reservoir; this is a major I-5 decision point.", article: "SR 152 and San Luis Reservoir" },
+      { name: "I-580 Split", lat: 37.4716, lng: -121.1775, kind: "landmark", note: "For Alameda, the practical route leaves I-5 at I-580 near Tracy rather than continuing north to Sacramento.", article: "I-580 Bay Area connector" },
+      { name: "Tracy", lat: 37.7397, lng: -121.4252, kind: "city", note: "I-580 carries the trip over the Altamont corridor toward the East Bay; this is often a traffic-sensitive commuter zone.", article: "Altamont approach" },
+      { name: "Livermore", lat: 37.6819, lng: -121.7680, kind: "city", note: "East Bay valley segment after the I-580 connector; the drive changes from interstate trunk route to Bay Area approach.", article: "East Bay approach" },
+      { name: "Dublin / Pleasanton", lat: 37.7022, lng: -121.9358, kind: "city", note: "Major I-580/I-680 interchange area before the route bends toward Oakland.", article: "East Bay interchange" },
+      { name: "Oakland", lat: 37.8044, lng: -122.2712, kind: "city", note: "Final urban freeway network before crossing into Alameda.", article: "Oakland approach" },
+      { name: "Alameda", lat: 37.7652, lng: -122.2416, kind: "finish", note: "Destination off the I-580/Oakland approach, not directly on I-5; the simulator follows the practical Bay Area connector.", article: "Destination connector" }
+    ];
+
+    const glympse = { tag: "calcup26", token: "", invite: "", apiKey: "0SLq661pXHmqdWgI8Yb1", lastPoll: 0 };
+
+    const trafficZones = [
+      { name: "Orange County merge", start: 0, end: 34, base: 0.32 },
+      { name: "Los Angeles basin", start: 34, end: 68, base: 0.52 },
+      { name: "Santa Clarita grade", start: 68, end: 98, base: 0.34 },
+      { name: "Grapevine / Tejon Pass", start: 98, end: 124, base: 0.42 },
+      { name: "Central Valley open road", start: 124, end: 326, base: 0.14 },
+      { name: "Tracy / Altamont Pass", start: 326, end: 382, base: 0.46 },
+      { name: "East Bay approach", start: 382, end: 423, base: 0.55 }
+    ];
+
+    const state = {
+      view: "first",
+      mode: "live",
+      playing: true,
+      progress: 0,
+      simProgress: 0,
+      speedScale: 2.6,
+      source: "boot",
+      position: { lat: 34.639104, lng: -118.746817 },
+      routeMile: 0,
+      speedMph: 0,
+      heading: 0,
+      trafficLevel: "clear",
+      trafficScore: 0.15,
+      trafficDelayMin: 0,
+      trafficSummary: "Flowing",
+      googleTrafficReady: false,
+      googleMap: null,
+      googleMarker: null,
+      lastLiveTime: 0,
+      lastMapFrameUpdate: 0,
+      log: [],
+      // render state
+      worldPos: 0,
+      camCurve: 0,
+      camElev: 0,
+      camHeadingEase: 0,
+      bob: 0,
+      layers: { traffic: true, milestones: true, intel: true, google: false }
+    };
+
+    /* ---------- canvases ---------- */
+    const mainCanvas = document.getElementById("mainCanvas");
+    const prevA = document.getElementById("prevA");
+    const prevB = document.getElementById("prevB");
+    const mctx = mainCanvas.getContext("2d");
+    const actxA = prevA.getContext("2d");
+    const actxB = prevB.getContext("2d");
+    const i5Logo = new Image(); i5Logo.src = "i5-logo.png";
+
+    // procedural photoreal asphalt texture (built once)
+    let asphaltTex = null;
+    (function buildAsphalt() {
+      const c = document.createElement("canvas"); c.width = 256; c.height = 512;
+      const x = c.getContext("2d");
+      x.fillStyle = "#34373b"; x.fillRect(0, 0, 256, 512);
+      // soft blotches (lighter/darker patches of wear)
+      for (let i = 0; i < 150; i++) {
+        x.globalAlpha = 0.04 + Math.random() * 0.05;
+        x.fillStyle = Math.random() < 0.5 ? "#212327" : "#474b50";
+        x.beginPath(); x.arc(Math.random() * 256, Math.random() * 512, 16 + Math.random() * 64, 0, 7); x.fill();
+      }
+      x.globalAlpha = 1;
+      // aggregate grain
+      for (let i = 0; i < 26000; i++) {
+        const g = Math.random();
+        const v = g < 0.5 ? 28 + Math.random() * 28 : g < 0.85 ? 58 + Math.random() * 38 : 104 + Math.random() * 72;
+        const j = (Math.random() * 8 - 4) | 0;
+        x.fillStyle = `rgb(${v | 0},${(v + j) | 0},${(v + 3) | 0})`;
+        x.fillRect(Math.random() * 256, Math.random() * 512, Math.random() < 0.85 ? 1 : 2, Math.random() < 0.85 ? 1 : 2);
+      }
+      // faint tar streaks
+      for (let i = 0; i < 9; i++) {
+        x.globalAlpha = 0.07; x.strokeStyle = "#1b1c1f"; x.lineWidth = 1 + Math.random() * 2;
+        const xx = Math.random() * 256; x.beginPath(); x.moveTo(xx, 0);
+        for (let yy = 0; yy <= 512; yy += 36) x.lineTo(xx + (Math.random() * 9 - 4.5), yy);
+        x.stroke();
+      }
+      x.globalAlpha = 1;
+      asphaltTex = c;
+    })();
+
+    const els = {
+      liveDot: document.getElementById("liveDot"),
+      liveText: document.getElementById("liveText"),
+      gpsChip: document.getElementById("gpsChip"),
+      syncChip: document.getElementById("syncChip"),
+      arMode: document.getElementById("arMode"),
+      roadSign: document.getElementById("roadSign"),
+      arSub: document.getElementById("arSub"),
+      vSpeed: document.getElementById("vSpeed"),
+      vMile: document.getElementById("vMile"),
+      vNext: document.getElementById("vNext"),
+      vSection: document.getElementById("vSection"),
+      vMarker: document.getElementById("vMarker"),
+      vTraffic: document.getElementById("vTraffic"),
+      intelName: document.getElementById("intelName"),
+      intelSec: document.getElementById("intelSec"),
+      intelNote: document.getElementById("intelNote"),
+      intelProg: document.getElementById("intelProg"),
+      intelTraffic: document.getElementById("intelTraffic"),
+      intelDelay: document.getElementById("intelDelay"),
+      timeline: document.getElementById("timeline"),
+      log: document.getElementById("log"),
+      trafficStatus: document.getElementById("trafficStatus"),
+      googleMapFrame: document.getElementById("googleMapFrame"),
+      googleTrafficMap: document.getElementById("googleTrafficMap"),
+      app: document.getElementById("app"),
+      prevALabel: document.getElementById("prevALabel"),
+      prevBLabel: document.getElementById("prevBLabel")
+    };
+
+    /* ---------- geo / math helpers (preserved) ---------- */
+    function milesBetween(a, b) {
+      const r = 3958.7613;
+      const dLat = (b.lat - a.lat) * Math.PI / 180;
+      const dLng = (b.lng - a.lng) * Math.PI / 180;
+      const la1 = a.lat * Math.PI / 180, la2 = b.lat * Math.PI / 180;
+      const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
+      return 2 * r * Math.asin(Math.sqrt(h));
+    }
+    function bearing(a, b) {
+      const y = Math.sin((b.lng - a.lng) * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180);
+      const x = Math.cos(a.lat * Math.PI / 180) * Math.sin(b.lat * Math.PI / 180) -
+        Math.sin(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.cos((b.lng - a.lng) * Math.PI / 180);
+      return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    }
+    function projectLocal(p, origin) {
+      const latMiles = (p.lat - origin.lat) * 69.0;
+      const lngMiles = (p.lng - origin.lng) * 69.0 * Math.cos(origin.lat * Math.PI / 180);
+      return { x: lngMiles, y: latMiles };
+    }
+    function closestPointOnSegment(p, a, b) {
+      const pp = projectLocal(p, a), bb = projectLocal(b, a);
+      const len2 = bb.x * bb.x + bb.y * bb.y;
+      const rawT = len2 ? (pp.x * bb.x + pp.y * bb.y) / len2 : 0;
+      const t = Math.max(0, Math.min(1, rawT));
+      const x = bb.x * t, y = bb.y * t;
+      return { t, dist: Math.hypot(pp.x - x, pp.y - y) };
+    }
+    function interpolateRoute(progress) {
+      const target = progress * totalMiles;
+      for (let i = 0; i < route.length - 1; i++) {
+        const a = route[i], b = route[i + 1];
+        if (target <= b.mile) {
+          const segMiles = b.mile - a.mile || 1;
+          const t = (target - a.mile) / segMiles;
+          return { lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t, heading: bearing(a, b), index: i };
+        }
+      }
+      return { ...route[route.length - 1], heading: 300, index: route.length - 2 };
+    }
+    function projectToRoute(pos) {
+      let best = { mile: 0, dist: Infinity, index: 0, t: 0 };
+      for (let i = 0; i < route.length - 1; i++) {
+        const hit = closestPointOnSegment(pos, route[i], route[i + 1]);
+        const mile = route[i].mile + hit.t * (route[i + 1].mile - route[i].mile);
+        if (hit.dist < best.dist) best = { mile, dist: hit.dist, index: i, t: hit.t };
+      }
+      return best;
+    }
+    function fmtMiles(n) { if (!Number.isFinite(n)) return "--"; return n < 10 ? n.toFixed(1) : Math.round(n).toString(); }
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    const lerp = (a, b, t) => a + (b - a) * t;
+    function fract(x) { return x - Math.floor(x); }
+    function noise1(x) {
+      const i = Math.floor(x), f = x - i;
+      const a = fract(Math.sin(i * 127.13) * 43758.5453);
+      const b = fract(Math.sin((i + 1) * 127.13) * 43758.5453);
+      const u = f * f * (3 - 2 * f);
+      return (a + (b - a) * u) * 2 - 1;
+    }
+    function hexToRgb(h) { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+    function mix(c1, c2, t) {
+      const a = hexToRgb(c1), b = hexToRgb(c2);
+      return `rgb(${Math.round(lerp(a[0], b[0], t))},${Math.round(lerp(a[1], b[1], t))},${Math.round(lerp(a[2], b[2], t))})`;
+    }
+
+    function log(message) {
+      const stamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      state.log.unshift(`${stamp}  ${message}`);
+      state.log = state.log.slice(0, 9);
+      els.log.textContent = state.log.join("\n");
+    }
+
+    for (let i = 0; i < route.length; i++) {
+      route[i].mile = i === 0 ? 0 : route[i - 1].mile + milesBetween(route[i - 1], route[i]);
+    }
+    const totalMiles = route[route.length - 1].mile;
+
+    /* ---------- glympse decode + live sync (preserved) ---------- */
+    function decodeTrail(rows) {
+      if (!Array.isArray(rows) || !rows.length) return null;
+      let cur = rows[0].slice();
+      const points = [];
+      for (let i = 0; i < rows.length; i++) {
+        if (i === 0) cur = rows[i].slice();
+        else cur = cur.map((v, idx) => v + rows[i][idx]);
+        points.push({ time: cur[0], lat: cur[1] / 1000000, lng: cur[2] / 1000000, altitude: cur[3], speedRaw: cur[4], headingRaw: cur[5] });
+      }
+      return points;
+    }
+    function decodeSpeed(raw) { if (!Number.isFinite(raw)) return 0; if (raw > 220) return raw / 4.47; return raw; }
+    function zoneForMile(mile) { return trafficZones.find(z => mile >= z.start && mile <= z.end) || trafficZones[trafficZones.length - 1]; }
+    function trafficColor(s) { if (s >= .82) return "#ff5247"; if (s >= .58) return "#ff9d2e"; if (s >= .34) return "#ffd84a"; return "#34e3a0"; }
+    function trafficLabel(s) { if (s >= .82) return "Jammed"; if (s >= .58) return "Heavy"; if (s >= .34) return "Moderate"; return "Clear"; }
+
+    function updateTrafficModel() {
+      const zone = zoneForMile(state.routeMile);
+      const speed = Number.isFinite(state.speedMph) ? state.speedMph : 65;
+      let speedScore = 0.12;
+      if (speed < 8) speedScore = .92; else if (speed < 22) speedScore = .78;
+      else if (speed < 42) speedScore = .55; else if (speed < 58) speedScore = .32;
+      const timePulse = (Math.sin(Date.now() / 180000 + state.routeMile * .035) + 1) * .07;
+      const score = clamp(zone.base * .55 + speedScore * .45 + timePulse, 0, 1);
+      state.trafficScore = score;
+      state.trafficLevel = trafficLabel(score).toLowerCase();
+      state.trafficSummary = `${trafficLabel(score)} near ${zone.name}`;
+      state.trafficDelayMin = Math.round(score * score * 34);
+    }
+    function segmentTrafficScore(mile) {
+      const zone = zoneForMile(mile);
+      const near = Math.max(0, 1 - Math.abs(mile - state.routeMile) / 24);
+      const liveBoost = state.trafficScore * near * .55;
+      const pulse = (Math.sin(Date.now() / 230000 + mile * .071) + 1) * .06;
+      return clamp(zone.base * .75 + liveBoost + pulse, 0, 1);
+    }
+
+    async function livePoll() {
+      state.source = "syncing";
+      setLive("warn", "Syncing public Glympse tag");
+      try {
+        if (!glympse.token) {
+          const loginUrl = `https://api.glympse.com/v2/account/login?username=viewer&password=password&api_key=${encodeURIComponent(glympse.apiKey)}`;
+          const loginRes = await fetch(loginUrl);
+          if (!loginRes.ok) throw new Error(`viewer login HTTP ${loginRes.status}`);
+          const login = await loginRes.json();
+          glympse.token = login.response && login.response.access_token;
+          if (!glympse.token) throw new Error("viewer login did not return a token");
+          log("Viewer token acquired.");
+        }
+        if (!glympse.invite) {
+          const groupRes = await fetch(`https://api.glympse.com/v2/groups/${glympse.tag}`, { headers: { Authorization: `Bearer ${glympse.token}` } });
+          if (!groupRes.ok) throw new Error(`group HTTP ${groupRes.status}`);
+          const group = await groupRes.json();
+          const member = group.response && group.response.members && group.response.members[0];
+          if (!member || !member.invite) throw new Error("tag has no active invite");
+          glympse.invite = member.invite;
+          log(`Active invite ${glympse.invite} found for !${glympse.tag}.`);
+        }
+        const inviteRes = await fetch(`https://api.glympse.com/v2/invites/${glympse.invite}`, { headers: { Authorization: `Bearer ${glympse.token}` } });
+        if (!inviteRes.ok) throw new Error(`invite HTTP ${inviteRes.status}`);
+        const invite = await inviteRes.json();
+        const points = decodeTrail(invite.response && invite.response.location);
+        if (!points || !points.length) throw new Error("invite has no location trail");
+        const last = points[points.length - 1];
+        applyPosition(last.lat, last.lng, decodeSpeed(last.speedRaw), last.headingRaw / 10, "live");
+        state.lastLiveTime = Date.now();
+        glympse.lastPoll = Date.now();
+        setLive("live", `Live · ${points.length} samples`);
+        log(`Live GPS ${last.lat.toFixed(5)}, ${last.lng.toFixed(5)}.`);
+      } catch (err) {
+        setLive("warn", "Live unavailable · sim/manual");
+        log(`Live sync failed: ${err.message}`);
+        if (state.mode === "live") state.source = "fallback";
+      }
+    }
+    function setLive(kind, text) {
+      els.liveDot.className = `dot ${kind === "live" ? "live" : kind === "warn" ? "warn" : ""}`;
+      els.liveText.textContent = text;
+    }
+    function applyPosition(lat, lng, speedMph, headingDeg, source) {
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const projected = projectToRoute({ lat, lng });
+      state.position = { lat, lng };
+      state.routeMile = projected.mile;
+      state.progress = clamp(projected.mile / totalMiles, 0, 1);
+      const along = interpolateRoute(state.progress);
+      state.heading = Number.isFinite(headingDeg) ? headingDeg : along.heading;
+      state.speedMph = Number.isFinite(speedMph) && speedMph > 0 ? speedMph : 62;
+      state.source = source;
+      updateTrafficModel();
+      updateGoogleTrafficMap();
+    }
+    function nextLandmark() { return route.find(p => p.mile > state.routeMile + 0.3) || route[route.length - 1]; }
+    function currentSegmentName() { const pos = interpolateRoute(state.progress); return `${route[pos.index].name} → ${route[pos.index + 1].name}`; }
+    function currentRoutePoint() { let best = route[0], bd = Infinity; for (const p of route) { const d = Math.abs(p.mile - state.routeMile); if (d < bd) { best = p; bd = d; } } return best; }
+    function currentSection() {
+      if (state.routeMile < route[2].mile) return "Santa Ana Freeway";
+      if (state.routeMile < route[5].mile) return "Golden State Freeway";
+      if (state.routeMile < route[9].mile) return "Grapevine / Tejon";
+      if (state.routeMile < route[17].mile) return "West Side Freeway";
+      if (state.routeMile < route[18].mile) return "I-580 connector";
+      return "East Bay approach";
+    }
+    function approxCaI5Marker() { if (state.routeMile > route[17].mile) return "I-580"; return `~${Math.round(state.routeMile + 96)}`; }
+
+    /* ============================================================
+       ROUTE CONTEXT — terrain, lighting, signage by route mile
+       ============================================================ */
+    function headingAtMile(mile) {
+      for (let i = 0; i < route.length - 1; i++) {
+        if (mile <= route[i + 1].mile) return bearing(route[i], route[i + 1]);
+      }
+      return 320;
+    }
+    function terrainAt(mile) {
+      if (mile < route[4].mile) return "urban";
+      if (mile < route[6].mile) return "foothill";
+      if (mile < route[9].mile) return "mountain";
+      if (mile < route[16].mile) return "valley";
+      if (mile < route[18].mile) return "hills";
+      return "eastbay";
+    }
+    // dynamic lighting keyframes by progress (morning haze → clear → golden → dusk)
+    const LIGHT_KEYS = [
+      { p: 0.00, skyTop: "#9fb4c4", skyHor: "#d9cdb6", sun: "#fff0d0", ground: "#9a9482", haze: 0.34 }, // LA haze morning
+      { p: 0.22, skyTop: "#6f97b8", skyHor: "#cdd6cf", sun: "#fff6df", ground: "#9c9druff", haze: 0.18 },
+      { p: 0.30, skyTop: "#5d92c4", skyHor: "#cfe0e2", sun: "#ffffff", ground: "#b09a6e", haze: 0.10 }, // clear mountains
+      { p: 0.55, skyTop: "#8aa6c4", skyHor: "#f3d79a", sun: "#ffe7a6", ground: "#c8a85f", haze: 0.16 }, // valley golden
+      { p: 0.78, skyTop: "#e7b277", skyHor: "#f6c98b", sun: "#ffdf9e", ground: "#b78e57", haze: 0.22 }, // late golden
+      { p: 1.00, skyTop: "#3a3f63", skyHor: "#b97a86", sun: "#ffd1a0", ground: "#5c5566", haze: 0.30 }  // dusk east bay
+    ];
+    function lightAt(progress) {
+      let a = LIGHT_KEYS[0], b = LIGHT_KEYS[LIGHT_KEYS.length - 1];
+      for (let i = 0; i < LIGHT_KEYS.length - 1; i++) {
+        if (progress >= LIGHT_KEYS[i].p && progress <= LIGHT_KEYS[i + 1].p) { a = LIGHT_KEYS[i]; b = LIGHT_KEYS[i + 1]; break; }
+      }
+      const t = (progress - a.p) / Math.max(1e-6, (b.p - a.p));
+      const safe = (c) => /^#[0-9a-f]{6}$/i.test(c) ? c : "#9a9382";
+      return {
+        skyTop: mix(safe(a.skyTop), safe(b.skyTop), t),
+        skyHor: mix(safe(a.skyHor), safe(b.skyHor), t),
+        sun: mix(safe(a.sun), safe(b.sun), t),
+        ground: mix(safe(a.ground), safe(b.ground), t),
+        haze: lerp(a.haze, b.haze, t)
+      };
+    }
+    function getRouteContext() {
+      const mile = state.routeMile;
+      const next = nextLandmark();
+      const terrain = terrainAt(mile);
+      const pt = currentRoutePoint();
+      return {
+        mile, terrain,
+        section: currentSection(),
+        segmentName: currentSegmentName(),
+        next, milesToNext: Math.max(0, next.mile - mile),
+        note: pt.note, article: pt.article,
+        caMarker: approxCaI5Marker(),
+        sign: mile > route[17].mile ? "I-580" : "5",
+        signWord: mile > route[17].mile ? "I-580 WEST · BAY AREA" : "I-5 NORTH",
+        light: lightAt(state.progress)
+      };
+    }
+
+    /* terrain elevation + curvature for the pseudo-3D corridor */
+    function curvatureAtMile(mile) {
+      const h0 = headingAtMile(mile), h1 = headingAtMile(mile + 0.7);
+      let d = ((h1 - h0 + 540) % 360) - 180;
+      return clamp(d, -28, 28) * 0.3 + noise1(mile * 0.7) * 1.6;
+    }
+    function hillAtMile(mile) {
+      const terr = terrainAt(mile);
+      const amp = terr === "mountain" ? 460 : terr === "foothill" ? 250 : terr === "hills" ? 300 : terr === "eastbay" ? 210 : 55;
+      return Math.sin(mile * 0.38 + 1.3) * amp * 0.5 + noise1(mile * 0.3 + 9) * amp * 0.5;
+    }
+
+    /* ============================================================
+       CANVAS UTILITIES
+       ============================================================ */
+    function sizeCanvas(canvas, maxDpr) {
+      const rect = canvas.getBoundingClientRect();
+      const ratio = Math.min(maxDpr || 2, Math.max(1, window.devicePixelRatio || 1));
+      const w = Math.max(1, Math.floor(rect.width * ratio));
+      const h = Math.max(1, Math.floor(rect.height * ratio));
+      if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+      return { w, h };
+    }
+    function roundRectPath(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y);
+    }
+
+    /* ============================================================
+       PSEUDO-3D CORRIDOR  (shared by first-person & drone)
+       ============================================================ */
+    const SEG_LEN = 200;          // world units / segment
+    const ROAD_W = 2100;          // half road width
+    const LANES = 4;
+    const WORLD_PER_MILE = 13000; // world units per route mile
+    const SPEED_K = 24;           // world units per (mph * second)
+
+    function buildBands(drawDist) {
+      const baseN = Math.floor(state.worldPos / SEG_LEN);
+      const offset = state.worldPos - baseN * SEG_LEN;
+      const xs = [], ys = [], miles = [];
+      let x = 0, dx = 0;
+      for (let n = 0; n <= drawDist; n++) {
+        const mile = state.routeMile + ((baseN + n) * SEG_LEN) / WORLD_PER_MILE;
+        dx += curvatureAtMile(mile);
+        x += dx;
+        xs[n] = x; ys[n] = hillAtMile(mile); miles[n] = mile;
+      }
+      return { baseN, offset, xs, ys, miles };
+    }
+
+    // project a world point given camera config and accumulated curve/hill arrays
+    function projWorld(worldZ, lateral, bands, cam, w, h) {
+      const bf = (worldZ + bands.offset) / SEG_LEN;
+      const bi = Math.floor(bf), bt = bf - bi;
+      const cx = lerp(bands.xs[Math.max(0, bi)] || 0, bands.xs[Math.max(0, bi + 1)] || 0, bt);
+      const cy = lerp(bands.ys[Math.max(0, bi)] || 0, bands.ys[Math.max(0, bi + 1)] || 0, bt);
+      const dz = Math.max(1, worldZ);
+      const scale = cam.depth / dz;
+      const sx = w / 2 + scale * (cx + lateral - cam.x) * (w / 2);
+      const sy = cam.horizon * h - scale * (cy - (cam.ground || 0) - cam.height) * (h / 2);
+      return { x: sx, y: sy, scale, w: scale * ROAD_W * (w / 2) };
+    }
+
+    function renderCorridor(ctx, w, h, cam, opts) {
+      const detail = opts.detail;
+      const drawDist = detail ? 150 : 64;
+      const bands = buildBands(drawDist);
+      const ctxd = getRouteContext();
+      const L = ctxd.light;
+      const terr = ctxd.terrain;
+      const horizonY = cam.horizon * h;
+
+      /* ---- SKY ---- */
+      const sky = ctx.createLinearGradient(0, 0, 0, horizonY + h * 0.08);
+      if (opts.operator) {
+        sky.addColorStop(0, "#040810"); sky.addColorStop(0.7, "#06121c"); sky.addColorStop(1, "#0a2230");
+      } else {
+        sky.addColorStop(0, L.skyTop); sky.addColorStop(1, L.skyHor);
+      }
+      ctx.fillStyle = sky; ctx.fillRect(0, 0, w, horizonY + h * 0.1);
+
+      /* sun / light bloom (automotive only) */
+      if (!opts.operator) {
+        const sunX = w * (0.5 - clamp((state.heading - 330) / 180, -0.4, 0.4));
+        const g = ctx.createRadialGradient(sunX, horizonY - h * 0.05, 0, sunX, horizonY - h * 0.05, h * 0.4);
+        g.addColorStop(0, L.sun); g.addColorStop(0.16, "rgba(255,240,210,.32)"); g.addColorStop(1, "rgba(255,240,210,0)");
+        ctx.globalAlpha = 0.5; ctx.fillStyle = g; ctx.fillRect(0, 0, w, horizonY + h * 0.1); ctx.globalAlpha = 1;
+      }
+
+      /* ---- TERRAIN SILHOUETTES (parallax) ---- */
+      drawTerrain(ctx, w, h, horizonY, terr, L, opts, bands);
+
+      /* ---- ROAD BANDS far → near ---- */
+      const groundA = opts.operator ? "#071018" : mix(L.ground, "#3b3a30", 0.35);
+      const groundB = opts.operator ? "#08131d" : mix(L.ground, "#46453a", 0.35);
+      const roadA = opts.operator ? "#0c1922" : "#34373a";
+      const roadB = opts.operator ? "#0e1d28" : "#3a3d40";
+
+      let prev = null;
+      for (let n = drawDist; n >= 1; n--) {
+        const zFar = n * SEG_LEN - bands.offset;
+        const zNear = (n - 1) * SEG_LEN - bands.offset;
+        if (zNear < 1) continue;
+        const pf = projWorld(zFar, 0, bands, cam, w, h);
+        const pn = projWorld(zNear, 0, bands, cam, w, h);
+        if (pf.y >= pn.y) continue;
+        const abs = bands.baseN + n;
+        const even = abs % 2 === 0;
+        const t = n / drawDist;
+
+        if (opts.operator) {
+          // ground
+          ctx.fillStyle = even ? groundA : groundB;
+          ctx.fillRect(0, pf.y, w, pn.y - pf.y + 1.2);
+          // shoulder
+          ctx.fillStyle = even ? "#13303a" : "#0c2129";
+          quad(ctx, pf.x, pf.y, pf.w * 1.18, pn.x, pn.y, pn.w * 1.18);
+          // road + gridlines
+          ctx.fillStyle = even ? roadA : roadB;
+          quad(ctx, pf.x, pf.y, pf.w, pn.x, pn.y, pn.w);
+          if (even) {
+            ctx.strokeStyle = "rgba(52,227,196,.5)"; ctx.lineWidth = Math.max(1, pn.scale * 60);
+            ctx.beginPath();
+            ctx.moveTo(pf.x - pf.w, pf.y); ctx.lineTo(pn.x - pn.w, pn.y);
+            ctx.moveTo(pf.x + pf.w, pf.y); ctx.lineTo(pn.x + pn.w, pn.y);
+            ctx.stroke();
+          }
+        } else {
+          // smooth graded ground (no hard alternation)
+          ctx.fillStyle = mix(mix(L.ground, "#3b3a30", 0.3), mix(L.ground, "#2a2922", 0.55), t);
+          ctx.fillRect(0, pf.y, w, pn.y - pf.y + 1.4);
+          // gravel shoulder
+          ctx.fillStyle = mix(L.ground, "#8c8576", 0.5);
+          quad(ctx, pf.x, pf.y, pf.w * 1.13, pn.x, pn.y, pn.w * 1.13);
+          // photoreal asphalt: clip trapezoid, graded base + scrolling grain
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(pf.x - pf.w, pf.y); ctx.lineTo(pf.x + pf.w, pf.y);
+          ctx.lineTo(pn.x + pn.w, pn.y); ctx.lineTo(pn.x - pn.w, pn.y); ctx.closePath();
+          ctx.clip();
+          ctx.fillStyle = mix("#3c3e42", "#26282c", t);
+          ctx.fillRect(pn.x - pn.w - 2, pf.y, pn.w * 2 + 4, pn.y - pf.y + 1.4);
+          if (asphaltTex) {
+            const absZ = (bands.baseN + n) * SEG_LEN;
+            const srcH = clamp(pn.scale * 9000, 4, asphaltTex.height);
+            const srcY = (absZ * 0.45) % (asphaltTex.height - srcH);
+            ctx.globalAlpha = clamp(0.6 - t * 0.42, 0.12, 0.6);
+            ctx.drawImage(asphaltTex, 0, srcY, asphaltTex.width, srcH, pn.x - pn.w - 2, pf.y, pn.w * 2 + 4, pn.y - pf.y + 1.4);
+            ctx.globalAlpha = 1;
+          }
+          ctx.restore();
+        }
+
+        // lane markings (dashes)
+        drawLaneLines(ctx, pf, pn, even, opts);
+
+        // traffic edge overlay (drone only)
+        if (opts.traffic && state.layers.traffic) {
+          const ts = segmentTrafficScore(bands.miles[n]);
+          if (ts > 0.34) {
+            ctx.strokeStyle = trafficColor(ts);
+            ctx.globalAlpha = clamp((ts - 0.3) * 1.1, 0, 0.8);
+            ctx.lineWidth = Math.max(1.5, pn.scale * 90);
+            ctx.beginPath();
+            ctx.moveTo(pf.x + pf.w * 1.32, pf.y); ctx.lineTo(pn.x + pn.w * 1.32, pn.y);
+            ctx.stroke(); ctx.globalAlpha = 1;
+          }
+        }
+        prev = pn;
+      }
+
+      /* ---- worn tyre paths (photoreal cue, automotive only) ---- */
+      if (!opts.operator) {
+        const zEndW = drawDist * SEG_LEN * 0.6;
+        drawRibbonLine(ctx, bands, cam, w, h, -0.45, ROAD_W * 0.14, "rgba(12,13,15,0.22)", zEndW);
+        drawRibbonLine(ctx, bands, cam, w, h, 0.45, ROAD_W * 0.14, "rgba(12,13,15,0.22)", zEndW);
+      }
+
+      /* ---- CONTINUOUS SOLID MARKINGS (edges + double-yellow centre) ---- */
+      {
+        const zEnd = drawDist * SEG_LEN * 0.7;
+        const edgeCol = opts.operator ? "rgba(120,210,230,.5)" : "rgba(240,235,214,.92)";
+        const yellowCol = opts.operator ? "rgba(52,227,196,.65)" : "rgba(242,194,52,.95)";
+        drawRibbonLine(ctx, bands, cam, w, h, -0.96, ROAD_W * 0.016, edgeCol, zEnd);
+        drawRibbonLine(ctx, bands, cam, w, h, 0.96, ROAD_W * 0.016, edgeCol, zEnd);
+        drawRibbonLine(ctx, bands, cam, w, h, -0.032, ROAD_W * 0.013, yellowCol, zEnd);
+        drawRibbonLine(ctx, bands, cam, w, h, 0.032, ROAD_W * 0.013, yellowCol, zEnd);
+      }
+
+      /* ---- AR GUIDANCE RIBBON (automotive: amber; operator: teal) ---- */
+      drawGuidanceRibbon(ctx, w, h, bands, cam, opts);
+
+      /* ---- SIGNAGE ---- */
+      drawSignage(ctx, w, h, bands, cam, ctxd, opts);
+
+      /* ---- VEHICLE (drone) ---- */
+      if (opts.vehicle) drawDroneVehicle(ctx, w, h, bands, cam);
+
+      /* ---- COCKPIT (first person) ---- */
+      if (opts.cockpit) drawCockpit(ctx, w, h, L);
+
+      /* ---- atmospheric haze near horizon ---- */
+      if (!opts.operator) {
+        const hz = ctx.createLinearGradient(0, horizonY - h * 0.12, 0, horizonY + h * 0.05);
+        hz.addColorStop(0, "rgba(255,255,255,0)");
+        hz.addColorStop(1, `rgba(235,235,225,${L.haze})`);
+        ctx.fillStyle = hz; ctx.fillRect(0, horizonY - h * 0.12, w, h * 0.17);
+      }
+
+      /* ---- operator telemetry overlay ---- */
+      if (opts.telemetry) drawDroneTelemetry(ctx, w, h, ctxd);
+    }
+
+    function quad(ctx, x1, y1, w1, x2, y2, w2) {
+      ctx.beginPath();
+      ctx.moveTo(x1 - w1, y1); ctx.lineTo(x1 + w1, y1);
+      ctx.lineTo(x2 + w2, y2); ctx.lineTo(x2 - w2, y2);
+      ctx.closePath(); ctx.fill();
+    }
+
+    // dashed interior lane dividers only (per band; their motion is the speed cue)
+    function drawLaneLines(ctx, pf, pn, even, opts) {
+      if (!even) return;
+      const wRatio = (pf.w / pn.w) || 1;
+      ctx.fillStyle = opts.operator ? "rgba(52,227,196,.4)" : "rgba(236,231,210,.68)";
+      const dwN = Math.max(0.5, pn.w * 0.012), dwF = Math.max(0.3, dwN * wRatio);
+      [-0.5, 0.5].forEach(off => {
+        quad(ctx, pf.x + pf.w * off, pf.y, dwF, pn.x + pn.w * off, pn.y, dwN);
+      });
+    }
+
+    // continuous tapered solid line ribbon (no per-band seams -> no shimmer)
+    function drawRibbonLine(ctx, bands, cam, w, h, latFrac, thickWorld, color, zEnd) {
+      const lat = latFrac * ROAD_W;
+      const pts = [];
+      const steps = 60;
+      const zStart = Math.max(60, SEG_LEN * 0.5);
+      for (let i = 0; i <= steps; i++) {
+        const z = zStart + (zEnd - zStart) * (i / steps);
+        const p = projWorld(z, lat, bands, cam, w, h);
+        p.hw = Math.max(0.45, p.scale * thickWorld * (w / 2));
+        pts.push(p);
+      }
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x - pts[0].hw, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x - pts[i].hw, pts[i].y);
+      for (let i = pts.length - 1; i >= 0; i--) ctx.lineTo(pts[i].x + pts[i].hw, pts[i].y);
+      ctx.closePath(); ctx.fill();
+    }
+
+    function drawGuidanceRibbon(ctx, w, h, bands, cam, opts) {
+      // only the operator/drone view gets the holographic guidance ribbon;
+      // first person relies on the painted double-yellow centre line.
+      if (!opts.operator) return;
+      const rgb = "52,227,196";
+      const samples = [];
+      for (let n = 2; n <= 40; n++) {
+        const z = n * SEG_LEN - bands.offset;
+        if (z < 420) continue;
+        const p = projWorld(z, 0, bands, cam, w, h);
+        p.hw = Math.min(p.w * 0.085, 34);
+        samples.push(p);
+      }
+      if (samples.length < 2) return;
+      ctx.save();
+      // soft tapered fill following road centre
+      ctx.beginPath();
+      ctx.moveTo(samples[0].x - samples[0].hw, samples[0].y);
+      for (let i = 0; i < samples.length; i++) ctx.lineTo(samples[i].x - samples[i].hw, samples[i].y);
+      for (let i = samples.length - 1; i >= 0; i--) ctx.lineTo(samples[i].x + samples[i].hw, samples[i].y);
+      ctx.closePath();
+      const grad = ctx.createLinearGradient(0, samples[samples.length - 1].y, 0, samples[0].y);
+      grad.addColorStop(0, `rgba(${rgb},0)`);
+      grad.addColorStop(1, `rgba(${rgb},${opts.operator ? 0.2 : 0.1})`);
+      ctx.fillStyle = grad; ctx.fill();
+      // flowing chevrons only in operator/drone mode (in first person they raced the road dashes)
+      if (opts.operator) {
+        ctx.globalCompositeOperation = "lighter";
+        const flow = (state.worldPos / (SEG_LEN * 2)) % 1;
+        ctx.lineCap = "round";
+        for (let i = 0; i < samples.length - 1; i++) {
+          const phase = (i / samples.length + flow) % 1;
+          if (phase < 0.16) {
+            const a = clamp(1 - i / samples.length, 0.1, 1);
+            ctx.strokeStyle = `rgba(${rgb},${a * 0.8})`;
+            ctx.lineWidth = Math.min(samples[i].hw * 0.9, 12);
+            ctx.beginPath(); ctx.moveTo(samples[i].x, samples[i].y); ctx.lineTo(samples[i + 1].x, samples[i + 1].y); ctx.stroke();
+          }
+        }
+      }
+      ctx.restore();
+    }
+
+    function drawTerrain(ctx, w, h, horizonY, terr, L, opts, bands) {
+      const par = -(state.camCurve * 60);
+      if (opts.operator) {
+        // operator: faint distant geo silhouette + hex sense handled elsewhere
+        ctx.fillStyle = "rgba(20,60,72,.5)";
+      }
+      ctx.save();
+      // back ridge
+      const layers = terr === "mountain" ? [[0.34, 0.7], [0.22, 0.4]] :
+                     terr === "foothill" ? [[0.18, 0.55], [0.1, 0.3]] :
+                     terr === "hills" || terr === "eastbay" ? [[0.2, 0.6], [0.12, 0.35]] :
+                     [[0.05, 0.4]]; // valley: nearly flat
+      layers.forEach((ly, idx) => {
+        const amp = ly[0], baseShade = ly[1];
+        const col = opts.operator ? mix("#0a2230", "#103848", baseShade) : mix(L.skyHor, "#54514011", baseShade);
+        ctx.fillStyle = opts.operator ? col : mix(L.skyHor, "#615b44", baseShade * 0.8);
+        ctx.beginPath();
+        ctx.moveTo(0, horizonY);
+        const seed = idx * 31.7 + (terr === "valley" ? 0 : 1);
+        const step = w / 28;
+        for (let i = 0; i <= 28; i++) {
+          const x = i * step + (par * (idx + 1) * 0.4) % step;
+          const n = noise1(i * 0.5 + seed + state.progress * 6);
+          const y = horizonY - (amp * h) * (0.5 + 0.5 * n) - (terr === "valley" ? 0 : amp * h * 0.2);
+          ctx.lineTo(x, y);
+        }
+        ctx.lineTo(w, horizonY); ctx.closePath(); ctx.fill();
+      });
+      // valley: aqueduct line + power pylons hint (operator gets neon)
+      if (terr === "valley") {
+        ctx.strokeStyle = opts.operator ? "rgba(84,169,255,.5)" : "rgba(120,150,170,.4)";
+        ctx.lineWidth = Math.max(1, h * 0.004);
+        ctx.beginPath(); ctx.moveTo(0, horizonY - h * 0.012); ctx.lineTo(w, horizonY - h * 0.03); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawSignage(ctx, w, h, bands, cam, ctxd, opts) {
+      // I-5 / I-580 shield on a roadside post (recurring)
+      const shieldZ = (0.18 * WORLD_PER_MILE) - (state.worldPos % (0.45 * WORLD_PER_MILE));
+      if (shieldZ > SEG_LEN * 2) {
+        const p = projWorld(shieldZ, ROAD_W * 1.55, bands, cam, w, h);
+        if (p.scale > 0.00018 && p.y < h) drawShieldSprite(ctx, p, opts);
+      }
+      // next landmark gantry sign
+      const signZ = ctxd.milesToNext * WORLD_PER_MILE - state.worldPos % SEG_LEN;
+      if (signZ > SEG_LEN * 2 && signZ < (opts.detail ? 150 : 64) * SEG_LEN) {
+        const p = projWorld(signZ, 0, bands, cam, w, h);
+        drawGantrySign(ctx, p, ctxd, opts);
+      }
+    }
+
+    function drawShieldSprite(ctx, p, opts) {
+      const sh = clamp(p.scale * 950, 14, 150);
+      if (!(i5Logo.complete && i5Logo.naturalWidth)) return;
+      const sw = sh * (i5Logo.naturalWidth / i5Logo.naturalHeight);
+      const postW = Math.max(1.5, sh * 0.06);
+      ctx.fillStyle = opts.operator ? "rgba(120,200,220,.5)" : "#6c6c64";
+      ctx.fillRect(p.x - postW / 2, p.y - sh * 0.1, postW, sh * 1.1);
+      ctx.save();
+      if (opts.operator) { ctx.globalAlpha = 0.92; ctx.shadowColor = "rgba(52,227,196,.6)"; ctx.shadowBlur = sh * 0.3; }
+      else { ctx.shadowColor = "rgba(0,0,0,.4)"; ctx.shadowBlur = sh * 0.12; ctx.shadowOffsetY = sh * 0.05; }
+      ctx.drawImage(i5Logo, p.x - sw / 2, p.y - sh * 1.05, sw, sh);
+      ctx.restore();
+    }
+
+    function drawGantrySign(ctx, p, ctxd, opts) {
+      const sw = clamp(p.scale * 2400, 60, 520);
+      const sh = sw * 0.42;
+      const x = p.x - sw / 2, y = p.y - sh - p.scale * 1500;
+      // gantry posts
+      ctx.fillStyle = opts.operator ? "rgba(120,200,220,.5)" : "#5a5a52";
+      const pw = Math.max(2, sw * 0.03);
+      ctx.fillRect(x - pw, y, pw, sh + p.scale * 1500);
+      ctx.fillRect(x + sw, y, pw, sh + p.scale * 1500);
+      // sign board
+      ctx.save();
+      if (opts.operator) {
+        ctx.shadowColor = "rgba(52,227,196,.5)"; ctx.shadowBlur = sh * 0.2;
+        ctx.fillStyle = "rgba(8,22,28,.92)"; roundRectPath(ctx, x, y, sw, sh, sh * 0.08); ctx.fill();
+        ctx.shadowBlur = 0; ctx.strokeStyle = "rgba(52,227,196,.7)"; ctx.lineWidth = Math.max(1, sw * 0.006); ctx.stroke();
+        ctx.fillStyle = "#9ff6e6";
+      } else {
+        ctx.shadowColor = "rgba(0,0,0,.45)"; ctx.shadowBlur = sh * 0.16; ctx.shadowOffsetY = sh * 0.06;
+        ctx.fillStyle = "#16713f"; roundRectPath(ctx, x, y, sw, sh, sh * 0.07); ctx.fill();
+        ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+        ctx.strokeStyle = "#eef2ea"; ctx.lineWidth = Math.max(1.5, sw * 0.012);
+        roundRectPath(ctx, x + sw * 0.03, y + sh * 0.08, sw * 0.94, sh * 0.84, sh * 0.06); ctx.stroke();
+        ctx.fillStyle = "#fff";
+      }
+      ctx.textAlign = "center";
+      ctx.font = `700 ${Math.max(9, sw * 0.1)}px var(--sans), Arial`;
+      ctx.fillText(ctxd.next.name.split(" / ")[0], x + sw / 2, y + sh * 0.46, sw * 0.92);
+      ctx.font = `${Math.max(8, sw * 0.085)}px var(--sans), Arial`;
+      ctx.fillText(`${fmtMiles(ctxd.milesToNext)} MILES`, x + sw / 2, y + sh * 0.78, sw * 0.9);
+      ctx.textAlign = "left";
+      ctx.restore();
+    }
+
+    function drawDroneVehicle(ctx, w, h, bands, cam) {
+      const followZ = 3400;
+      const laneLat = 0.2 * ROAD_W;   // right carriageway, left (fast) lane hugging the centre line
+      const p = projWorld(followZ, laneLat, bands, cam, w, h);
+      const size = clamp(p.scale * 2600, 26, 130);
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      // ground shadow
+      ctx.fillStyle = "rgba(0,0,0,.45)";
+      ctx.beginPath(); ctx.ellipse(0, size * 0.42, size * 0.62, size * 0.2, 0, 0, Math.PI * 2); ctx.fill();
+      // holographic tracker puck
+      ctx.globalCompositeOperation = "lighter";
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 320);
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, size * 1.3);
+      g.addColorStop(0, "rgba(52,227,196,.85)"); g.addColorStop(0.4, "rgba(52,227,196,.3)"); g.addColorStop(1, "rgba(52,227,196,0)");
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, size * (1.0 + pulse * 0.25), 0, Math.PI * 2); ctx.fill();
+      ctx.globalCompositeOperation = "source-over";
+      // vehicle body (top-down-ish)
+      ctx.fillStyle = "#e9f6f4"; ctx.strokeStyle = "#0a2028"; ctx.lineWidth = Math.max(1, size * 0.03);
+      roundRectPath(ctx, -size * 0.34, -size * 0.5, size * 0.68, size, size * 0.18); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#1d2e36";
+      roundRectPath(ctx, -size * 0.26, -size * 0.28, size * 0.52, size * 0.42, size * 0.1); ctx.fill();
+      // heading reticle
+      ctx.strokeStyle = "rgba(52,227,196,.8)"; ctx.lineWidth = Math.max(1, size * 0.04);
+      ctx.beginPath(); ctx.arc(0, 0, size * 0.78, -Math.PI * 0.65, -Math.PI * 0.35); ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawCockpit(ctx, w, h, L) {
+      // windshield A-pillar tint + dash silhouette
+      ctx.save();
+      // lower dashboard
+      const dashTop = h * 0.86;
+      const g = ctx.createLinearGradient(0, dashTop, 0, h);
+      g.addColorStop(0, "rgba(10,11,12,0)"); g.addColorStop(0.4, "rgba(12,13,14,.85)"); g.addColorStop(1, "#0a0b0c");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(0, h); ctx.lineTo(0, dashTop + h * 0.04);
+      ctx.quadraticCurveTo(w * 0.5, dashTop - h * 0.03, w, dashTop + h * 0.04);
+      ctx.lineTo(w, h); ctx.closePath(); ctx.fill();
+      // subtle dash glass reflection
+      ctx.globalAlpha = 0.06; ctx.fillStyle = "#cfe3ff";
+      ctx.beginPath(); ctx.moveTo(w * 0.15, h); ctx.lineTo(w * 0.42, dashTop + h * 0.02); ctx.lineTo(w * 0.5, dashTop + h * 0.02); ctx.lineTo(w * 0.3, h); ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = 1;
+      // top windshield tint band
+      const tint = ctx.createLinearGradient(0, 0, 0, h * 0.16);
+      tint.addColorStop(0, "rgba(20,40,60,.45)"); tint.addColorStop(1, "rgba(20,40,60,0)");
+      ctx.fillStyle = tint; ctx.fillRect(0, 0, w, h * 0.16);
+      ctx.restore();
+    }
+
+    function drawDroneTelemetry(ctx, w, h, ctxd) {
+      ctx.save();
+      ctx.font = "11px ui-monospace, monospace";
+      const alt = Math.round(420 + Math.sin(performance.now() / 1400) * 18);
+      const brg = Math.round(state.camHeadingEase);
+      const age = state.lastLiveTime ? Math.round((Date.now() - state.lastLiveTime) / 1000) : null;
+      const lines = [
+        ["ALT", `${alt} ft AGL`],
+        ["BRG", `${brg.toString().padStart(3, "0")}°`],
+        ["SECTION", ctxd.section.toUpperCase()],
+        ["NEXT", `${ctxd.next.name.split(" / ")[0]} · ${fmtMiles(ctxd.milesToNext)} mi`],
+        ["SAMPLE", age == null ? "SIM" : `${age}s old`]
+      ];
+      ctx.textAlign = "left";
+      const rx = w - 232;
+      ctx.fillStyle = "rgba(52,227,196,.45)"; ctx.fillText("— DRONE TELEMETRY", rx, 30);
+      lines.forEach((ln, i) => {
+        const y = 50 + i * 17;
+        ctx.fillStyle = "rgba(52,227,196,.6)"; ctx.fillText(ln[0], rx, y);
+        ctx.fillStyle = "#cfeee7"; ctx.fillText(ln[1], rx + 78, y);
+      });
+      // center reticle
+      ctx.strokeStyle = "rgba(52,227,196,.35)"; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(w / 2 - 18, h / 2); ctx.lineTo(w / 2 - 6, h / 2);
+      ctx.moveTo(w / 2 + 6, h / 2); ctx.lineTo(w / 2 + 18, h / 2);
+      ctx.moveTo(w / 2, h / 2 - 18); ctx.lineTo(w / 2, h / 2 - 6);
+      ctx.moveTo(w / 2, h / 2 + 6); ctx.lineTo(w / 2, h / 2 + 18);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    /* ============================================================
+       FIRST PERSON & DRONE entry points
+       ============================================================ */
+    function renderFirst(ctx, w, h, detail) {
+      // automotive camera — height + grade tracked smoothly, no vertical bob
+      const cam = {
+        depth: 0.78,
+        height: 1080,
+        ground: state.camElev,
+        x: state.camCurve * 0.4,
+        horizon: 0.47
+      };
+      renderCorridor(ctx, w, h, cam, { detail, operator: false, cockpit: true, traffic: false, vehicle: false, telemetry: false });
+    }
+    function renderDrone(ctx, w, h, detail) {
+      const cam = {
+        depth: 1.05,
+        height: 4200,
+        ground: state.camElev,
+        x: state.camCurve * 1.6,   // camera lags / eases into the curve
+        horizon: 0.30
+      };
+      renderCorridor(ctx, w, h, cam, { detail, operator: true, cockpit: false, traffic: true, vehicle: true, telemetry: detail });
+    }
+
+    /* ============================================================
+       OVERHEAD — familiar Google-Maps roadmap under TV traffic-cam chrome
+       ============================================================ */
+    function renderOverhead(ctx, w, h, detail) {
+      const GBLUE = "#1a73e8", GBLUE_L = "#4f8cf7";
+      // map land base
+      ctx.fillStyle = "#e9e8e3"; ctx.fillRect(0, 0, w, h);
+
+      const minLat = Math.min(...route.map(p => p.lat)) - .35;
+      const maxLat = Math.max(...route.map(p => p.lat)) + .3;
+      const minLng = Math.min(...route.map(p => p.lng)) - .45;
+      const maxLng = Math.max(...route.map(p => p.lng)) + .3;
+      const bh = clamp(h * 0.075, 34, 70);          // broadcast banner height
+      const padX = w * 0.045, padTop = bh + h * 0.045, padBot = h * 0.055;
+      const sg = (p) => ({
+        x: padX + ((p.lng - minLng) / (maxLng - minLng)) * (w - padX * 2),
+        y: h - padBot - ((p.lat - minLat) / (maxLat - minLat)) * (h - padTop - padBot)
+      });
+      const fs = h * 0.026;
+
+      // ---- water (Pacific along the west edge + SF Bay) ----
+      ctx.fillStyle = "#a9d3f5";
+      const wEdge = sg({ lat: minLat, lng: minLng + 0.1 }).x;
+      ctx.beginPath();
+      ctx.moveTo(0, 0); ctx.lineTo(wEdge * 0.7, 0);
+      ctx.lineTo(wEdge * 1.05, h * 0.45); ctx.lineTo(wEdge * 0.6, h); ctx.lineTo(0, h);
+      ctx.closePath(); ctx.fill();
+      // SF Bay near Alameda/Oakland
+      const bay = sg(route[22]);
+      ctx.beginPath(); ctx.ellipse(bay.x - w * 0.02, bay.y - h * 0.01, w * 0.05, h * 0.11, -0.5, 0, Math.PI * 2); ctx.fill();
+
+      // ---- green areas (parks / coastal range / Sierra foothills) ----
+      ctx.fillStyle = "#cfe6c4";
+      [[route[7], 0.13, 0.14], [route[16], 0.1, 0.16], [route[19], 0.09, 0.1]].forEach(([p, rx, ry]) => {
+        const s = sg(p); ctx.beginPath(); ctx.ellipse(s.x - w * 0.04, s.y, w * rx, h * ry, 0.3, 0, Math.PI * 2); ctx.fill();
+      });
+      // tan valley band
+      ctx.fillStyle = "rgba(232,226,196,.55)";
+      const v1 = sg(route[10]), v2 = sg(route[15]);
+      ctx.fillRect(Math.min(v1.x, v2.x) - w * 0.04, Math.min(v1.y, v2.y) - h * 0.08, Math.abs(v2.x - v1.x) + w * 0.12, Math.abs(v2.y - v1.y) + h * 0.16);
+
+      // ---- faux minor road network (light map texture) ----
+      ctx.lineCap = "round";
+      const minorRoads = [[2, 40, 1.4], [4, -50, 1.1], [12, 60, 1.6], [16, -40, 1.2], [18, 30, 1.3], [20, -55, 1.1]];
+      minorRoads.forEach(([idx, ang, len]) => {
+        const s = sg(route[idx]); const a = ang * Math.PI / 180; const L = w * 0.14 * len;
+        ctx.strokeStyle = "#d7d6d0"; ctx.lineWidth = Math.max(3, w * 0.006);
+        ctx.beginPath(); ctx.moveTo(s.x - Math.cos(a) * L, s.y - Math.sin(a) * L); ctx.lineTo(s.x + Math.cos(a) * L, s.y + Math.sin(a) * L); ctx.stroke();
+        ctx.strokeStyle = "#ffffff"; ctx.lineWidth = Math.max(1.5, w * 0.0032);
+        ctx.beginPath(); ctx.moveTo(s.x - Math.cos(a) * L, s.y - Math.sin(a) * L); ctx.lineTo(s.x + Math.cos(a) * L, s.y + Math.sin(a) * L); ctx.stroke();
+      });
+
+      const current = interpolateRoute(state.progress);
+      const traveled = []; for (const p of route) { traveled.push(p); if (p.mile > state.routeMile) break; }
+      traveled[traveled.length - 1] = current;
+      const ahead = [current]; for (const p of route) { if (p.mile > state.routeMile) ahead.push(p); }
+      const strokeRoute = (pts, color, lw) => {
+        ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.lineJoin = "round"; ctx.lineCap = "round";
+        ctx.beginPath(); pts.forEach((p, i) => { const s = sg(p); i ? ctx.lineTo(s.x, s.y) : ctx.moveTo(s.x, s.y); }); ctx.stroke();
+      };
+      const rw = Math.max(5, Math.min(w, h) * 0.016);
+
+      // route white casing (whole route)
+      strokeRoute(route, "#ffffff", rw + Math.max(3, rw * 0.5));
+      // traveled = grey, ahead = Google blue (familiar nav look)
+      strokeRoute(traveled, "#9aa0a6", rw);
+      strokeRoute(ahead, GBLUE, rw);
+
+      // ---- live traffic on the road ahead (Google traffic colours) ----
+      if (state.layers.traffic) {
+        for (let i = 0; i < route.length - 1; i++) {
+          if (route[i + 1].mile < state.routeMile) continue;
+          const a = sg(route[i]), b = sg(route[i + 1]);
+          const ts = segmentTrafficScore((route[i].mile + route[i + 1].mile) / 2);
+          ctx.strokeStyle = trafficColor(ts); ctx.lineWidth = rw * 0.55;
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        }
+      }
+
+      // ---- route-intel callouts (clean Google info-window cards) ----
+      if (state.layers.intel && detail) {
+        ctx.font = `${fs * 0.82}px var(--sans), Arial`;
+        [
+          { label: "Tejon Pass · 5-Mile Grade", at: "Grapevine / Tejon Pass" },
+          { label: "RT-99 split → Bakersfield", at: "Wheeler Ridge" },
+          { label: "West Side Fwy · Aqueduct", at: "Coalinga" },
+          { label: "SR-152 · San Luis Reservoir", at: "Santa Nella / SR 152" },
+          { label: "Exit I-5 → I-580", at: "I-580 Split" }
+        ].forEach(c => {
+          const p = route.find(item => item.name === c.at); if (!p) return;
+          const s = sg(p);
+          const lw2 = ctx.measureText(c.label).width + fs * 1.4;
+          const bx = Math.min(s.x + 12, w - lw2 - 10), by = s.y - fs * 2.4;
+          ctx.fillStyle = "rgba(0,0,0,.12)"; roundRectPath(ctx, bx + 1, by + 2, lw2, fs * 1.7, 5); ctx.fill();
+          ctx.fillStyle = "#ffffff"; roundRectPath(ctx, bx, by, lw2, fs * 1.7, 5); ctx.fill();
+          ctx.strokeStyle = "#3c4043"; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(bx + fs * 0.5, by + fs * 1.7); ctx.stroke();
+          ctx.fillStyle = "#3c4043"; ctx.fillText(c.label, bx + fs * 0.7, by + fs * 1.15);
+        });
+      }
+
+      // ---- milestone pins (Google red teardrop) ----
+      if (state.layers.milestones) {
+        ctx.font = `600 ${fs * 0.82}px var(--sans), Arial`;
+        route.forEach(p => {
+          const s = sg(p);
+          const isLm = p.kind === "landmark" || p.kind === "finish" || p.kind === "start";
+          if (isLm) {
+            const r = Math.max(5, fs * 0.5);
+            ctx.fillStyle = "rgba(0,0,0,.18)"; ctx.beginPath(); ctx.ellipse(s.x, s.y + 1, r * 0.7, r * 0.3, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = p.kind === "finish" ? "#1a73e8" : "#ea4335";
+            ctx.beginPath();
+            ctx.arc(s.x, s.y - r * 1.4, r, Math.PI * 0.15, Math.PI * 0.85, true);
+            ctx.lineTo(s.x, s.y); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(s.x, s.y - r * 1.5, r * 0.42, 0, Math.PI * 2); ctx.fill();
+          } else {
+            ctx.fillStyle = "#bdc1c6"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.4;
+            ctx.beginPath(); ctx.arc(s.x, s.y, Math.max(2.5, fs * 0.22), 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+          }
+          if (detail && (isLm || ["Irvine", "Los Angeles", "Tracy", "Oakland", "Alameda", "Kettleman", "Bakersfield"].some(n => p.name.includes(n)))) {
+            const nm = p.name.split(" / ")[0];
+            ctx.lineWidth = 3; ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.strokeText(nm, s.x + fs * 0.5, s.y - fs * (isLm ? 2.0 : 0.5));
+            ctx.fillStyle = "#3c4043"; ctx.fillText(nm, s.x + fs * 0.5, s.y - fs * (isLm ? 2.0 : 0.5));
+          }
+        });
+      }
+
+      // ---- live position: Google blue location dot ----
+      const car = sg(current);
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 700);
+      ctx.fillStyle = `rgba(26,115,232,${0.18 - pulse * 0.1})`;
+      ctx.beginPath(); ctx.arc(car.x, car.y, fs * (1.4 + pulse * 0.9), 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(car.x, car.y, fs * 0.62, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = GBLUE; ctx.beginPath(); ctx.arc(car.x, car.y, fs * 0.46, 0, Math.PI * 2); ctx.fill();
+
+      // ---- north arrow + scale bar (map furniture) ----
+      if (detail) {
+        const nx = w - padX - fs * 0.9, ny = padTop + fs * 1.4;
+        ctx.fillStyle = "#fff"; ctx.strokeStyle = "#d0d0cb"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(nx, ny, fs * 1.05, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = "#ea4335"; ctx.beginPath(); ctx.moveTo(nx, ny - fs * 0.75); ctx.lineTo(nx - fs * 0.32, ny); ctx.lineTo(nx + fs * 0.32, ny); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "#70757a"; ctx.beginPath(); ctx.moveTo(nx, ny + fs * 0.75); ctx.lineTo(nx - fs * 0.32, ny); ctx.lineTo(nx + fs * 0.32, ny); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "#3c4043"; ctx.font = `600 ${fs * 0.62}px var(--sans), Arial`; ctx.textAlign = "center"; ctx.fillText("N", nx, ny - fs * 1.25); ctx.textAlign = "left";
+        // scale bar
+        const sbx = padX, sby = h - padBot * 0.5;
+        ctx.strokeStyle = "#5f6368"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(sbx, sby - 5); ctx.lineTo(sbx, sby); ctx.lineTo(sbx + w * 0.06, sby); ctx.lineTo(sbx + w * 0.06, sby - 5); ctx.stroke();
+        ctx.fillStyle = "#5f6368"; ctx.font = `${fs * 0.6}px var(--sans), Arial`; ctx.fillText("50 mi", sbx + 4, sby - 8);
+      }
+
+      // ============ TV broadcast chrome ============
+      // top headline bar
+      ctx.fillStyle = "rgba(17,19,23,0.94)"; ctx.fillRect(0, 0, w, bh);
+      ctx.fillStyle = GBLUE; ctx.fillRect(0, bh - 3, w, 3);
+      // LIVE pill
+      const px0 = w * 0.022, pY = bh / 2;
+      ctx.fillStyle = "#e8362b"; roundRectPath(ctx, px0, pY - fs * 0.7, fs * 3.0, fs * 1.4, fs * 0.7); ctx.fill();
+      const blink = 0.55 + 0.45 * Math.sin(performance.now() / 500);
+      ctx.fillStyle = `rgba(255,255,255,${blink})`; ctx.beginPath(); ctx.arc(px0 + fs * 0.62, pY, fs * 0.26, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.font = `700 ${fs * 0.72}px var(--sans), Arial`; ctx.textAlign = "left"; ctx.fillText("LIVE", px0 + fs * 1.05, pY + fs * 0.26);
+      // headline
+      let hx = px0 + fs * 3.5;
+      ctx.font = `700 ${fs * 0.92}px var(--sans), Arial`; ctx.fillStyle = "#fff";
+      ctx.fillText("I-5 NORTHBOUND", hx, pY + fs * 0.32);
+      hx += ctx.measureText("I-5 NORTHBOUND").width + fs * 0.7;
+      ctx.font = `${fs * 0.82}px var(--sans), Arial`; ctx.fillStyle = "#9aa7b4";
+      ctx.fillText("IRVINE → ALAMEDA", hx, pY + fs * 0.3);
+      // right side: current locality + progress
+      ctx.textAlign = "right";
+      ctx.font = `700 ${fs * 0.82}px var(--sans), Arial`; ctx.fillStyle = "#ffd34a";
+      ctx.fillText(`${trafficLabel(state.trafficScore).toUpperCase()} · ${Math.round(state.progress * 100)}% ROUTE`, w - w * 0.022, pY + fs * 0.3);
+      ctx.textAlign = "left";
+      // station bug bottom-right
+      if (detail) {
+        ctx.font = `700 ${fs * 0.66}px var(--sans), Arial`;
+        const bug = "CALCUP26 TRAFFIC";
+        const bw = ctx.measureText(bug).width + fs * 1.2;
+        ctx.fillStyle = "rgba(17,19,23,0.82)"; roundRectPath(ctx, w - padX - bw, h - padBot - fs * 1.9, bw, fs * 1.5, 5); ctx.fill();
+        ctx.fillStyle = "#ffd34a"; ctx.fillText(bug, w - padX - bw + fs * 0.55, h - padBot - fs * 0.95);
+      }
+      // subtle broadcast vignette
+      const vg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.3, w / 2, h / 2, Math.max(w, h) * 0.72);
+      vg.addColorStop(0, "rgba(0,0,0,0)"); vg.addColorStop(1, "rgba(0,0,0,0.16)");
+      ctx.fillStyle = vg; ctx.fillRect(0, bh, w, h - bh);
+    }
+
+    /* ============================================================
+       FRAME DISPATCH
+       ============================================================ */
+    const RENDERERS = { first: renderFirst, drone: renderDrone, overhead: renderOverhead };
+    const ORDER = ["first", "drone", "overhead"];
+    let prevTick = 0;
+
+    function renderMode(mode, ctx, w, h, detail) { RENDERERS[mode](ctx, w, h, detail); }
+
+    function updateGoogleTrafficMap() {
+      if (!state.googleTrafficReady || !state.googleMap || !window.google) return;
+      const pos = { lat: state.position.lat, lng: state.position.lng };
+      state.googleMap.setCenter(pos);
+      if (state.googleMarker) state.googleMarker.setPosition(pos);
+      else state.googleMarker = new google.maps.Marker({ position: pos, map: state.googleMap, title: "Live Glympse position" });
+    }
+    function enableGoogleTrafficLayer() {
+      const key = document.getElementById("googleMapsKey").value.trim();
+      if (!key) {
+        els.trafficStatus.textContent = "Paste a Google Maps JavaScript API key to enable the real TrafficLayer. The simulator traffic model is active now.";
+        log("Google TrafficLayer needs a Maps JavaScript API key."); return;
+      }
+      els.trafficStatus.textContent = "Loading Google Maps TrafficLayer…";
+      window.__initCalcupTraffic = () => {
+        const pos = { lat: state.position.lat, lng: state.position.lng };
+        state.googleMap = new google.maps.Map(els.googleTrafficMap, { center: pos, zoom: 9, mapTypeId: "roadmap", disableDefaultUI: true, zoomControl: true, gestureHandling: "greedy" });
+        new google.maps.TrafficLayer({ autoRefresh: true }).setMap(state.googleMap);
+        state.googleTrafficReady = true;
+        setLayer("google", true);
+        els.trafficStatus.textContent = "Google TrafficLayer enabled. Route colors still use live Glympse speed as the trip-specific traffic signal.";
+        updateGoogleTrafficMap(); log("Google TrafficLayer enabled.");
+      };
+      if (window.google && window.google.maps) { window.__initCalcupTraffic(); return; }
+      if (document.getElementById("googleMapsApiScript")) { els.trafficStatus.textContent = "Google Maps script is already loading."; return; }
+      const script = document.createElement("script");
+      script.id = "googleMapsApiScript"; script.async = true; script.defer = true;
+      script.onerror = () => { els.trafficStatus.textContent = "Google Maps script failed to load. Check the API key, billing, and Maps JavaScript API access."; log("Google Maps TrafficLayer script failed to load."); };
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&callback=__initCalcupTraffic`;
+      document.head.appendChild(script);
+    }
+
+    function updateDOM() {
+      const c = getRouteContext();
+      els.gpsChip.textContent = `${state.position.lat.toFixed(4)}, ${state.position.lng.toFixed(4)}`;
+      const age = state.lastLiveTime ? Math.round((Date.now() - state.lastLiveTime) / 1000) : null;
+      els.syncChip.textContent = age == null ? `SRC ${state.source.toUpperCase()}` : `SYNC ${age}s`;
+      els.arMode.textContent = state.view === "first" ? "FIRST PERSON" : state.view === "drone" ? "DRONE CHASE" : "OVERHEAD OPS";
+      els.roadSign.textContent = c.signWord;
+      els.arSub.textContent = state.view === "overhead" ? `${Math.round(state.progress * 100)}% of corridor mapped` : `${c.segmentName}`;
+      els.vSpeed.textContent = state.speedMph ? Math.round(state.speedMph) : "--";
+      els.vMile.textContent = fmtMiles(state.routeMile);
+      els.vNext.textContent = `${c.next.name.split(" / ")[0]} · ${fmtMiles(c.milesToNext)}mi`;
+      els.vSection.textContent = c.section;
+      els.vMarker.textContent = c.caMarker;
+      els.vTraffic.textContent = trafficLabel(state.trafficScore);
+      // drawer
+      els.intelName.textContent = c.segmentName;
+      els.intelSec.textContent = c.section.toUpperCase();
+      els.intelNote.innerHTML = `<b style="color:var(--ink)">${c.article}.</b> ${c.note}`;
+      els.intelProg.textContent = `${Math.round(state.progress * 100)}%`;
+      els.intelTraffic.textContent = trafficLabel(state.trafficScore);
+      els.intelDelay.textContent = `${state.trafficDelayMin} min`;
+
+      if (Date.now() - state.lastMapFrameUpdate > 15000) {
+        state.lastMapFrameUpdate = Date.now();
+        els.googleMapFrame.src = `https://www.google.com/maps?q=${state.position.lat.toFixed(6)},${state.position.lng.toFixed(6)}&z=9&output=embed`;
+      }
+    }
+    function buildTimeline() {
+      const next = nextLandmark();
+      els.timeline.innerHTML = route.map(p => {
+        const delta = p.mile - state.routeMile;
+        const cls = delta < -0.3 ? "passed" : p === next ? "next" : "";
+        const label = delta >= 0 ? `${fmtMiles(delta)} MI AHEAD` : `${fmtMiles(Math.abs(delta))} MI BEHIND`;
+        const caMarker = p.mile > route[17].mile ? "I-580 connector" : `CA I-5 ~mi ${Math.round(p.mile + 96)}`;
+        return `<div class="stop ${cls}"><div class="st">${p.name}</div><div class="sd">${label} · ${caMarker}</div><div class="sn">${p.note}</div></div>`;
+      }).join("");
+    }
+    let tlTick = 0;
+
+    let lastFrame = performance.now();
+    function frame(now) {
+      const dt = Math.min(0.05, (now - lastFrame) / 1000);
+      lastFrame = now;
+
+      // sim / live drift (preserved behavior)
+      if (state.mode === "sim" && state.playing) {
+        state.simProgress = (state.simProgress + dt * 0.0032 * state.speedScale) % 1;
+        const pos = interpolateRoute(state.simProgress);
+        applyPosition(pos.lat, pos.lng, 70, pos.heading, "simulated");
+      }
+      if (state.mode === "live" && state.playing && Date.now() - state.lastLiveTime > 45000) {
+        const nudge = interpolateRoute(Math.min(1, state.progress + dt * 0.00045));
+        if (state.source !== "live") applyPosition(nudge.lat, nudge.lng, 62, nudge.heading, "fallback drift");
+      }
+
+      // visual scroll + camera easing
+      if (state.playing) state.worldPos += (state.speedMph || 0) * SPEED_K * dt;
+      const targetCurve = curvatureAtMile(state.routeMile + 0.15) * 18;
+      state.camCurve += (targetCurve - state.camCurve) * Math.min(1, dt * 1.6);
+      // camera follows the road grade smoothly so the near road never pops vertically
+      const targetElev = hillAtMile(state.routeMile);
+      state.camElev += (targetElev - state.camElev) * Math.min(1, dt * 1.3);
+      state.camHeadingEase += (((state.heading - state.camHeadingEase + 540) % 360) - 180) * Math.min(1, dt * 1.6);
+      state.camHeadingEase = (state.camHeadingEase + 360) % 360;
+
+      updateDOM();
+      if (now - tlTick > 1200) { tlTick = now; buildTimeline(); }
+
+      // active → main
+      const ms = sizeCanvas(mainCanvas, 2);
+      renderMode(state.view, mctx, ms.w, ms.h, true);
+
+      // previews (throttled, low detail)
+      if (now - prevTick > 90) {
+        prevTick = now;
+        const others = ORDER.filter(m => m !== state.view);
+        els.prevALabel.textContent = others[0].toUpperCase();
+        els.prevBLabel.textContent = others[1].toUpperCase();
+        const a = sizeCanvas(prevA, 1), b = sizeCanvas(prevB, 1);
+        renderMode(others[0], actxA, a.w, a.h, false);
+        renderMode(others[1], actxB, b.w, b.h, false);
+        prevA.parentElement.dataset.target = others[0];
+        prevB.parentElement.dataset.target = others[1];
+      }
+
+      requestAnimationFrame(frame);
+    }
+
+    /* ============================================================
+       VIEW / LAYER / UI WIRING
+       ============================================================ */
+    function setView(v) {
+      state.view = v; els.app.dataset.view = v;
+      document.querySelectorAll("#modeSwitch button").forEach(b => b.classList.toggle("active", b.dataset.mode === v));
+      // google panes only relevant in overhead
+      const showGoogle = v === "overhead" && state.layers.google;
+      els.googleMapFrame.classList.toggle("show", showGoogle && !state.googleTrafficReady);
+      els.googleTrafficMap.classList.toggle("show", showGoogle && state.googleTrafficReady);
+    }
+    function setLayer(name, on) {
+      state.layers[name] = on;
+      const btn = document.querySelector(`.lbtn[data-layer="${name}"]`);
+      if (btn) btn.classList.toggle("on", on);
+      if (name === "google") setView(state.view);
+    }
+
+    document.getElementById("modeSwitch").addEventListener("click", e => { const b = e.target.closest("button"); if (b) setView(b.dataset.mode); });
+    document.querySelectorAll(".prev").forEach(p => p.addEventListener("click", () => { if (p.dataset.target) setView(p.dataset.target); }));
+    document.getElementById("layers").addEventListener("click", e => { const b = e.target.closest(".lbtn"); if (b) setLayer(b.dataset.layer, !b.classList.contains("on")); });
+
+    document.getElementById("btnSettings").addEventListener("click", () => document.getElementById("settingsPanel").classList.toggle("open"));
+    document.getElementById("closeSettings").addEventListener("click", () => document.getElementById("settingsPanel").classList.remove("open"));
+    document.getElementById("btnDrawer").addEventListener("click", () => document.getElementById("drawerPanel").classList.toggle("open"));
+    document.getElementById("closeDrawer").addEventListener("click", () => document.getElementById("drawerPanel").classList.remove("open"));
+
+    document.getElementById("pollNow").addEventListener("click", livePoll);
+    document.getElementById("playPause").addEventListener("click", e => { state.playing = !state.playing; e.currentTarget.textContent = state.playing ? "Pause" : "Resume"; });
+    document.getElementById("modeLive").addEventListener("click", () => {
+      state.mode = "live"; document.getElementById("modeLive").classList.add("active"); document.getElementById("modeSim").classList.remove("active"); livePoll();
+    });
+    document.getElementById("modeSim").addEventListener("click", () => {
+      state.mode = "sim"; state.simProgress = state.progress;
+      document.getElementById("modeSim").classList.add("active"); document.getElementById("modeLive").classList.remove("active");
+      setLive("warn", "Local simulated drive"); log("Switched to local drive simulation.");
+    });
+    document.getElementById("applyManual").addEventListener("click", () => {
+      const lat = Number(document.getElementById("manualLat").value), lng = Number(document.getElementById("manualLng").value);
+      applyPosition(lat, lng, 62, null, "manual GPS"); log(`Manual GPS applied: ${lat.toFixed(5)}, ${lng.toFixed(5)}.`);
+    });
+    document.getElementById("enableGoogleTraffic").addEventListener("click", enableGoogleTrafficLayer);
+    document.getElementById("speedScale").addEventListener("input", e => { state.speedScale = Number(e.target.value); });
+
+    if (!CanvasRenderingContext2D.prototype.roundRect) {
+      CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) { roundRectPath(this, x, y, w, h, r); return this; };
+    }
+
+    log("Live journey simulator loaded.");
+    applyPosition(state.position.lat, state.position.lng, 62, null, "startup");
+    buildTimeline();
+    setView("first");
+    livePoll();
+    setInterval(() => { if (state.mode === "live") livePoll(); }, 30000);
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>

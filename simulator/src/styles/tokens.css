@@ -1,0 +1,49 @@
+/* Design tokens — verbatim from the CALCUP26 handoff (:root). */
+:root {
+  /* operator / mission-control base */
+  --bg: #05080c;
+  --bg2: #080d14;
+  --panel: rgba(10, 16, 24, 0.82);
+  --panel-solid: #0a121b;
+  --line: rgba(120, 180, 210, 0.16);
+  --line-strong: rgba(120, 190, 220, 0.34);
+  --ink: #eaf4f6;
+  --muted: #8b9bab;
+  --dim: #5d6b78;
+  /* holographic accents (Google-AR / Ingress energy) */
+  --teal: #34e3c4;
+  --teal-dim: rgba(52, 227, 196, 0.16);
+  --blue: #54a9ff;
+  --blue-dim: rgba(84, 169, 255, 0.16);
+  /* automotive accent */
+  --amber: #f6b65c;
+  --warn: #ff7a59;
+  --good: #5fd08a;
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+#root {
+  height: 100%;
+}
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}

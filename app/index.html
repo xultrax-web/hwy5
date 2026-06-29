@@ -1,0 +1,1866 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CALCUP26 · I-5 Live Drive Simulator</title>
+  <link rel="icon" href="i5-logo.png">
+  <style>
+    :root {
+      --bg: #0d1416;
+      --panel: #121b1e;
+      --panel-2: #18242a;
+      --panel-3: #1f2e34;
+      --line: #2a3940;
+      --line-soft: #223036;
+      --text: #eaf2ef;
+      --muted: #8fa3a0;
+      --muted-2: #6f8480;
+
+      --accent: #34c77b;
+      --accent-deep: #1c7c54;
+      --sign-green: #0c7a3f;
+      --cyan: #5fd0e6;
+
+      --live: #e2483f;
+      --warn: #f2b134;
+
+      --t-clear: #49a85f;
+      --t-mod: #e7c84f;
+      --t-heavy: #e88926;
+      --t-jam: #d83b32;
+
+      --font-sign: "Arial Narrow", "Roboto Condensed", "Helvetica Neue", Arial, sans-serif;
+      --font-body: system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+      --font-mono: "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+
+      --r: 9px;
+      --r-sm: 6px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { height: 100%; }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(1200px 700px at 78% -10%, #16262b 0%, transparent 60%),
+        var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button, input, select { font: inherit; color: inherit; }
+
+    .num { font-variant-numeric: tabular-nums; }
+
+    .shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    /* ---------- Top status strip ---------- */
+    .topstrip {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 12px;
+      padding: 11px 18px;
+      background: linear-gradient(180deg, #14201f, #0f1718);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .brand-logo {
+      width: 40px; height: 40px; object-fit: contain; flex: 0 0 auto;
+      filter: drop-shadow(0 2px 5px rgba(0,0,0,.45));
+    }
+    .brand h1 {
+      margin: 0; font-size: 15px; font-weight: 800; letter-spacing: .02em;
+      line-height: 1.1;
+    }
+    .brand .tag {
+      font-family: var(--font-mono); font-size: 11px; color: var(--accent);
+      letter-spacing: .08em;
+    }
+
+    .strip-stats {
+      display: flex; align-items: center; gap: 7px; flex-wrap: nowrap;
+      min-width: 0;
+    }
+
+    .pill {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 6px 11px; border-radius: 999px;
+      background: var(--panel-2); border: 1px solid var(--line);
+      font-size: 12px; letter-spacing: .03em; white-space: nowrap;
+    }
+    .pill .dot {
+      width: 8px; height: 8px; border-radius: 999px; background: var(--muted-2);
+      flex: 0 0 auto;
+    }
+    .pill.live .dot { background: var(--accent); box-shadow: 0 0 0 0 rgba(52,199,123,.6); animation: ping 1.8s infinite; }
+    .pill.warn .dot { background: var(--warn); }
+    .pill.off  .dot { background: var(--live); }
+    @keyframes ping {
+      0% { box-shadow: 0 0 0 0 rgba(52,199,123,.5); }
+      70% { box-shadow: 0 0 0 7px rgba(52,199,123,0); }
+      100% { box-shadow: 0 0 0 0 rgba(52,199,123,0); }
+    }
+
+    .stat {
+      display: flex; flex-direction: column; line-height: 1.1;
+      padding: 0 8px; border-left: 1px solid var(--line-soft);
+      white-space: nowrap; flex: 0 0 auto;
+    }
+    .stat:first-child { border-left: 0; }
+    /* the Section value is the only flexible item: it truncates with an ellipsis
+       so the strip stays on ONE line regardless of section name or added stats. */
+    .stat-section { flex: 0 1 auto; min-width: 0; }
+    .stat-section .v { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+    .stat .k {
+      font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+      color: var(--muted-2);
+    }
+    .stat .v { font-size: 15px; font-weight: 700; margin-top: 2px; }
+    .stat .v small { font-size: 11px; color: var(--muted); font-weight: 600; }
+
+    .strip-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+    .btn {
+      border: 1px solid var(--line); background: var(--panel-2);
+      border-radius: var(--r-sm); padding: 8px 12px; cursor: pointer;
+      text-decoration: none; min-height: 36px; font-size: 13px;
+      display: inline-flex; align-items: center; gap: 7px;
+      transition: border-color .15s, background .15s;
+    }
+    .btn:hover { border-color: var(--muted); }
+    .btn:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+    .btn.primary { background: var(--accent-deep); border-color: var(--accent); }
+    .btn.primary:hover { background: #226e4d; }
+
+    /* ---------- Main grid ---------- */
+    main {
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr) 320px;
+      min-height: 0;
+    }
+
+    .leftrail, .rightbar {
+      background: var(--panel);
+      overflow: auto;
+      min-height: 0;
+    }
+    .leftrail { border-right: 1px solid var(--line); }
+    .rightbar { border-left: 1px solid var(--line); }
+
+    .panel { padding: 14px 15px; border-bottom: 1px solid var(--line-soft); }
+    .panel h2 {
+      margin: 0 0 11px; font-size: 11px; letter-spacing: .14em;
+      text-transform: uppercase; color: var(--muted); font-weight: 700;
+    }
+
+    .status { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-bottom: 11px; }
+    .status .dot { width: 9px; height: 9px; border-radius: 999px; background: var(--live); flex: 0 0 auto; }
+    .status .dot.live { background: var(--accent); }
+    .status .dot.warn { background: var(--warn); }
+
+    .seg { display: grid; grid-auto-flow: column; gap: 4px; padding: 3px; background: #0c1314; border: 1px solid var(--line-soft); border-radius: var(--r-sm); }
+    .seg button {
+      border: 0; background: transparent; color: var(--muted);
+      border-radius: 4px; padding: 8px 6px; cursor: pointer; min-height: 34px;
+      font-size: 12px; letter-spacing: .03em; transition: background .15s, color .15s;
+    }
+    .seg button:hover { color: var(--text); }
+    .seg button.active { background: var(--panel-3); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
+
+    .field { margin-bottom: 9px; }
+    label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 5px; letter-spacing: .02em; }
+    input, select {
+      width: 100%; background: #0c1314; color: var(--text);
+      border: 1px solid var(--line); border-radius: var(--r-sm);
+      padding: 8px 9px; min-height: 36px;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--cyan); }
+    input[type=range] { padding: 0; min-height: 24px; accent-color: var(--accent); }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+    .hint { color: var(--muted-2); font-size: 11.5px; line-height: 1.5; margin: 9px 0 0; }
+
+    .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    .metric { background: #0e1617; border: 1px solid var(--line-soft); border-radius: var(--r-sm); padding: 9px 10px; }
+    .metric .k { color: var(--muted-2); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; display: block; margin-bottom: 4px; }
+    .metric .v { font-size: 17px; font-weight: 700; }
+    .metric.sev .v { display: inline-flex; align-items: center; gap: 6px; }
+    .sw { width: 9px; height: 9px; border-radius: 2px; background: var(--muted-2); flex: 0 0 auto; }
+
+    .collapse { margin-top: 10px; border: 1px solid var(--line-soft); border-radius: var(--r-sm); overflow: hidden; background: #0b1112; }
+    .collapse > summary {
+      cursor: pointer; padding: 9px 11px; font-size: 11px; font-weight: 700;
+      letter-spacing: .08em; text-transform: uppercase; color: var(--muted);
+      list-style: none;
+    }
+    .collapse > summary::-webkit-details-marker { display: none; }
+    .collapse > summary::before { content: "▸ "; color: var(--muted-2); }
+    .collapse[open] > summary::before { content: "▾ "; }
+    .collapse .inner { padding: 0 11px 11px; }
+    .glympse-frame { display: block; width: 100%; height: 200px; border: 0; background: #05080c; margin-top: 4px; border-radius: 5px; }
+
+    .log {
+      font-family: var(--font-mono); font-size: 11.5px; color: #9fb3aa;
+      line-height: 1.5; white-space: pre-wrap; background: #0b1112;
+      border: 1px solid var(--line-soft); border-radius: var(--r-sm);
+      padding: 10px; max-height: 150px; overflow: auto;
+    }
+
+    /* ---------- Stage ---------- */
+    .stage { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 0; background: #0a0f10; }
+
+    .stage-top {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 10px 14px; border-bottom: 1px solid var(--line); background: #0f1718;
+      flex-wrap: wrap;
+    }
+    .modeswitch { display: flex; gap: 4px; padding: 4px; background: #0a1011; border: 1px solid var(--line-soft); border-radius: 8px; }
+    .modeswitch button {
+      border: 0; background: transparent; color: var(--muted); cursor: pointer;
+      padding: 9px 16px; border-radius: 6px; font-size: 13px; font-weight: 600;
+      letter-spacing: .02em; transition: background .15s, color .15s; min-height: 38px;
+    }
+    .modeswitch button:hover { color: var(--text); }
+    .modeswitch button.active { background: linear-gradient(180deg, #25433a, #1c352d); color: #eafff4; box-shadow: inset 0 0 0 1px var(--accent-deep); }
+
+    .layers { display: flex; gap: 6px; flex-wrap: wrap; }
+    .layer-btn {
+      display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+      border: 1px solid var(--line); background: var(--panel-2); color: var(--muted);
+      border-radius: 999px; padding: 7px 12px; min-height: 34px; font-size: 11px;
+      letter-spacing: .06em; text-transform: uppercase; transition: all .15s;
+    }
+    .layer-btn .sw { border-radius: 999px; box-shadow: 0 0 0 1px rgba(255,255,255,.12); }
+    .layer-btn:hover { border-color: var(--muted); }
+    .layer-btn.on { color: #dff9ff; border-color: var(--cyan); background: #14323a; }
+    .layer-btn.on .sw { background: var(--accent); box-shadow: 0 0 9px rgba(52,199,123,.5); }
+    .layer-btn[disabled] { opacity: .45; cursor: not-allowed; }
+
+    .st-group { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .rail-toggle {
+      flex: 0 0 auto; min-width: 34px; height: 34px; padding: 0 9px; border: 1px solid var(--line);
+      background: var(--panel-2); color: var(--muted); border-radius: var(--r-sm);
+      cursor: pointer; font-size: 13px; line-height: 1; display: inline-flex; align-items: center; gap: 7px;
+      transition: border-color .15s, color .15s, background .15s;
+    }
+    .rail-toggle:hover { border-color: var(--cyan); color: var(--text); }
+    .rail-toggle.collapsed { color: var(--cyan); border-color: var(--cyan); background: #14323a; }
+    .rail-toggle .rt-label { display: none; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; font-weight: 700; }
+    .rail-toggle.collapsed .rt-label { display: inline; }
+
+    /* Hero stage: a 16:9 widescreen box, centered + letterboxed in the row.
+       Its exact size is computed by fitHero() to fit the stage both ways;
+       aspect-ratio is a pre-JS fallback. */
+    .viewport {
+      position: relative;
+      overflow: hidden;
+      margin: auto;
+      background: #05080c;
+      aspect-ratio: 16 / 9;
+      max-width: 100%;
+      max-height: 100%;
+    }
+    .view { position: absolute; inset: 0; display: none; }
+    .view.active { display: block; }
+    canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; z-index: 2; }
+    .cc-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #05080c; z-index: 1; }
+
+    .map-live {
+      position: absolute; inset: 0; display: none; background: #0b1112; z-index: 3;
+    }
+    .map-live.show { display: block; }
+
+    /* HUD overlays */
+    .hud { position: absolute; inset: 14px; pointer-events: none; z-index: 4;
+      display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 12px; }
+    .hudbox {
+      background: rgba(10,15,16,.62); border: 1px solid rgba(255,255,255,.14);
+      border-radius: 8px; padding: 9px 12px; backdrop-filter: blur(7px);
+    }
+    .hudbox .k { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--cyan); }
+    .hudbox .v { font-size: 18px; font-weight: 700; margin-top: 3px; }
+
+    /* Green guide sign (simple green/white, no shield, no arrow) */
+    .guide-sign {
+      justify-self: end; pointer-events: none;
+      width: min(330px, 36vw); min-width: 240px;
+      background: var(--sign-green);
+      border: 3px solid #fff; border-radius: 8px;
+      box-shadow: inset 0 0 0 2px var(--sign-green), 0 10px 24px rgba(0,0,0,.5);
+      padding: 14px 16px; color: #fff; font-family: var(--font-sign);
+    }
+    .guide-sign .gtab {
+      font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
+      opacity: .92;
+    }
+    .guide-sign .gcity {
+      font-size: 28px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+      line-height: 1.02; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .guide-sign .gdist {
+      font-size: 13px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+      margin-top: 8px;
+    }
+
+    /* AR data rail */
+    .ar-rail {
+      display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+      gap: 1px; background: var(--line); border-top: 1px solid var(--line);
+    }
+    .ar-cell { background: #0f1718; padding: 10px 14px; min-width: 0; }
+    .ar-cell .k { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted-2); }
+    .ar-cell .v { font-size: 18px; font-weight: 700; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ar-cell.dim .v { color: var(--muted); }
+
+    /* ---------- Right bar ---------- */
+    .intel { background: #0e1617; border: 1px solid var(--line-soft); border-radius: var(--r-sm); padding: 11px 12px; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+    .intel strong { color: var(--text); display: block; margin-bottom: 3px; }
+
+    .timeline { position: relative; padding-left: 18px; margin-top: 4px; }
+    .timeline::before { content: ""; position: absolute; left: 6px; top: 6px; bottom: 6px; width: 2px; background: #33444a; }
+    .stop { position: relative; padding: 8px 0 9px; border-bottom: 1px solid rgba(255,255,255,.05); }
+    .stop:last-child { border-bottom: 0; }
+    .stop::before { content: ""; position: absolute; left: -16px; top: 12px; width: 9px; height: 9px; border-radius: 999px; background: #5b6a6f; border: 1px solid #8ea0a3; }
+    .stop.passed::before { background: var(--accent); border-color: var(--accent); }
+    .stop.next::before { background: var(--warn); border-color: #ffd97a; box-shadow: 0 0 8px rgba(242,177,52,.6); }
+    .stop-title { font-weight: 700; font-size: 13px; }
+    .stop-meta { color: var(--muted); font-size: 11.5px; margin-top: 3px; line-height: 1.4; }
+    .stop-meta .mi { color: var(--accent); font-weight: 600; }
+
+    /* ---- Journey Progress rail ---- */
+    .journey-head { margin-bottom: 12px; }
+    .jh-bar { height: 6px; background: #1b2629; border-radius: 999px; overflow: hidden; }
+    .jh-bar span { display: block; height: 100%; width: 0%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--cyan)); transition: width .4s ease; }
+    .jh-meta { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .jh-meta #jhPct { color: var(--accent); font-weight: 700; }
+
+    .timeline.journey .jstop {
+      position: relative; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.05);
+      cursor: pointer; transition: opacity .2s;
+    }
+    .timeline.journey .jstop::before {
+      content: ""; position: absolute; left: -16px; top: 12px; width: 9px; height: 9px;
+      border-radius: 999px; background: #5b6a6f; border: 1px solid #8ea0a3;
+    }
+    .timeline.journey .jstop.passed { opacity: .45; }
+    .timeline.journey .jstop.passed::before { background: var(--accent); border-color: var(--accent); }
+    .timeline.journey .jstop.passed .jname::before { content: "✓ "; color: var(--accent); }
+    .timeline.journey .jstop.next::before { background: var(--warn); border-color: #ffd97a; box-shadow: 0 0 8px rgba(242,177,52,.6); }
+    .jstop-head { display: flex; align-items: baseline; gap: 8px; }
+    .jname { font-weight: 700; font-size: 13px; flex: 1; min-width: 0; }
+    .jbadge { font-size: 9.5px; letter-spacing: .1em; font-weight: 800; color: var(--muted-2); }
+    .jstop.next .jbadge { color: var(--warn); }
+    .jdist { font-size: 12px; color: var(--cyan); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .jstop.passed .jdist { color: var(--muted-2); }
+    .jdetail { display: none; font-size: 11.5px; color: var(--muted); line-height: 1.45; margin-top: 6px; padding-left: 2px; }
+    .jstop.expanded .jdetail { display: block; }
+    .timeline.journey .jstop:hover { background: rgba(255,255,255,.035); }
+
+    .youhere { position: relative; padding: 9px 0; }
+    .youhere::before {
+      content: ""; position: absolute; left: -20px; top: 8px; width: 16px; height: 16px;
+      border-radius: 999px; background: var(--cyan); border: 2px solid #06121c;
+      box-shadow: 0 0 0 3px rgba(95,208,230,.28);
+    }
+    .youhere .yh-label { font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--cyan); font-weight: 800; }
+    .youhere .yh-sub { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 2px; }
+
+    .stops-list { display: grid; gap: 7px; }
+    .poi {
+      display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px;
+      background: #0e1617; border: 1px solid var(--line-soft); border-radius: var(--r-sm); padding: 9px 11px;
+    }
+    .poi .ico { width: 26px; height: 26px; border-radius: 6px; display: grid; place-items: center; font-size: 13px; font-weight: 800; color: #0a0f10; font-family: var(--font-sign); letter-spacing: -.02em; }
+    .poi .nm { min-width: 0; }
+    .poi .nm b { font-size: 13px; font-weight: 700; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .poi .nm span { font-size: 11px; color: var(--muted); }
+    .poi .d { font-size: 13px; font-weight: 700; color: var(--cyan); white-space: nowrap; }
+    .stops-empty { color: var(--muted-2); font-size: 12px; line-height: 1.5; }
+
+    .snap-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+    .snap-card { position: relative; aspect-ratio: 9 / 16; border-radius: 6px; overflow: hidden; background: #0b1112; border: 1px solid var(--line-soft); }
+    .snap-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .snap-thumb.ph { display: grid; place-items: center; color: var(--muted-2); font-size: 16px; }
+    .snap-age { position: absolute; left: 4px; bottom: 4px; font-size: 9px; font-weight: 700; letter-spacing: .04em; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.8); }
+
+    @media (min-width: 1181px) {
+      /* Widescreen hero: lock the app to the viewport so the 16:9 stage fills it
+         and the side rails scroll internally instead of stretching the page. */
+      .shell { height: 100vh; overflow: hidden; }
+      /* Pin each region to its column so a hidden rail can't reflow the stage. */
+      .leftrail { grid-column: 1; }
+      .stage { grid-column: 2; }
+      .rightbar { grid-column: 3; }
+      /* Collapsing a rail hands its width to the hero stage. */
+      body.hide-left main { grid-template-columns: 0 minmax(0, 1fr) 320px; }
+      body.hide-right main { grid-template-columns: 260px minmax(0, 1fr) 0; }
+      body.hide-left.hide-right main { grid-template-columns: 0 minmax(0, 1fr) 0; }
+      body.hide-left .leftrail { display: none; }
+      body.hide-right .rightbar { display: none; }
+    }
+
+    @media (max-width: 1180px) {
+      main { grid-template-columns: 260px minmax(0, 1fr); }
+      .rightbar { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); }
+      /* collapse/breadcrumb is a widescreen affordance; rails stack normally here */
+      .rail-toggle { display: none; }
+    }
+    @media (max-width: 820px) {
+      .topstrip { grid-template-columns: 1fr; gap: 10px; }
+      .strip-actions { justify-content: flex-start; }
+      main { grid-template-columns: 1fr; }
+      .stage { order: -1; min-height: 64vh; }
+      .guide-sign { width: 200px; min-width: 200px; }
+      .guide-sign .gcity { font-size: 18px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .pill.live .dot { animation: none; }
+    }
+  </style>
+</head>
+<body class="hide-left">
+  <div class="shell">
+    <header class="topstrip">
+      <div class="brand">
+        <img class="brand-logo" src="i5-logo.png" alt="California Interstate 5 shield">
+        <div>
+          <h1>I-5 Live Drive Simulator</h1>
+          <div class="tag">!calcup26 · Irvine → Alameda</div>
+        </div>
+      </div>
+      <div class="strip-stats">
+        <span id="livePill" class="pill warn"><span class="dot"></span><span id="livePillText">Preparing live adapter</span></span>
+        <div class="stat stat-section"><span class="k">Section</span><span class="v" id="stripSection">--</span></div>
+        <div class="stat"><span class="k">Speed</span><span class="v num" id="stripSpeed">--</span></div>
+        <div class="stat"><span class="k">ETA</span><span class="v num" id="stripEta">--</span></div>
+        <div class="stat"><span class="k">Progress</span><span class="v num" id="stripProgress">0%</span></div>
+        <div class="stat"><span class="k">Last sync</span><span class="v num" id="stripSync">--</span></div>
+      </div>
+      <div class="strip-actions">
+        <a class="btn" href="https://glympse.com/!calcup26" target="_blank" rel="noopener">Open Glympse</a>
+        <a id="mapsLink" class="btn" href="https://www.google.com/maps" target="_blank" rel="noopener">Open Maps</a>
+        <button id="pollNow" class="btn primary">Sync Live Tag</button>
+        <button id="playPause" class="btn">Pause</button>
+      </div>
+    </header>
+
+    <main>
+      <aside class="leftrail">
+        <section class="panel">
+          <h2>Live Source</h2>
+          <div class="status"><span id="liveDot" class="dot warn"></span><span id="liveText">Preparing live adapter</span></div>
+          <div class="seg" style="margin-bottom:10px">
+            <button id="modeLive" class="active">Live tag</button>
+            <button id="modeSim">Sim drive</button>
+          </div>
+          <div class="row2">
+            <div class="field"><label for="manualLat">Manual lat</label><input id="manualLat" value="34.639104" inputmode="decimal"></div>
+            <div class="field"><label for="manualLng">Manual lng</label><input id="manualLng" value="-118.746817" inputmode="decimal"></div>
+          </div>
+          <button id="applyManual" class="btn" style="width:100%">Apply GPS Point</button>
+          <details class="collapse">
+            <summary>Glympse !calcup26 source</summary>
+            <div class="inner">
+              <iframe id="glympseFrame" class="glympse-frame" title="Glympse public tag calcup26" src="https://glympse.com/!calcup26" loading="lazy"></iframe>
+            </div>
+          </details>
+          <details class="collapse">
+            <summary>Snap Map · public stories</summary>
+            <div class="inner">
+              <a id="snapMapLink" class="btn" href="https://map.snapchat.com" target="_blank" rel="noopener" style="width:100%;justify-content:center;margin-bottom:8px">Open Snap Map at current location</a>
+              <div id="snapList" class="snap-list"><div class="stops-empty">Public Snaps near the route appear here once the Snap proxy backend is running.</div></div>
+            </div>
+          </details>
+          <p class="hint">Live mode polls the public Glympse tag and decodes its latest trail point. Manual GPS covers a CORS failure or an expired tag.</p>
+        </section>
+
+        <section class="panel">
+          <h2>Journey</h2>
+          <div class="metrics">
+            <div class="metric"><span class="k">Route miles</span><div class="v num" id="mileMetric">0</div></div>
+            <div class="metric"><span class="k">Next landmark</span><div class="v" id="nextMetric">--</div></div>
+            <div class="metric sev"><span class="k">Traffic</span><div class="v"><span class="sw" id="trafficSw"></span><span id="trafficMetric">--</span></div></div>
+            <div class="metric"><span class="k">Delay signal</span><div class="v num" id="delayMetric">--</div></div>
+            <div class="metric"><span class="k">Google ETA</span><div class="v num" id="googleEtaMetric">--</div></div>
+            <div class="metric"><span class="k">Weather</span><div class="v" id="weatherMetric">--</div></div>
+            <div class="metric"><span class="k">AQI</span><div class="v" id="aqiMetric">--</div></div>
+            <div class="metric"><span class="k">CA I-5 marker</span><div class="v num" id="caMarkerMetric">--</div></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h2>Controls</h2>
+          <div class="field">
+            <label for="speedScale">Sim drive speed</label>
+            <input id="speedScale" type="range" min="0.2" max="8" step="0.2" value="2.2">
+          </div>
+          <p class="hint">First person is an AR windshield with no traffic overlay. Traffic colors appear on the drone and overhead views, and in these metrics.</p>
+        </section>
+
+        <section class="panel">
+          <h2>Adapter Log</h2>
+          <div id="log" class="log"></div>
+        </section>
+      </aside>
+
+      <section class="stage">
+        <div class="stage-top">
+          <div class="st-group">
+            <button id="toggleLeft" class="rail-toggle collapsed" title="Show/hide controls" aria-label="Toggle controls panel"><span class="rt-ico">❯</span><span class="rt-label">Controls</span></button>
+            <div class="modeswitch">
+              <button id="viewFirst" class="active" data-view="first">First Person</button>
+              <button id="viewDrone" data-view="drone">Drone</button>
+              <button id="viewOverhead" data-view="overhead">Overhead</button>
+            </div>
+          </div>
+          <div class="st-group">
+            <div class="layers">
+              <button id="layerTraffic" class="layer-btn" data-layer="traffic">Traffic <span class="sw"></span></button>
+              <button id="layerStops" class="layer-btn on" data-layer="stops">Stops <span class="sw"></span></button>
+              <button id="layerIntel" class="layer-btn on" data-layer="intel">Route Intel <span class="sw"></span></button>
+            </div>
+            <button id="toggleRight" class="rail-toggle" title="Show/hide route panel" aria-label="Toggle route panel"><span class="rt-ico">❯</span><span class="rt-label">Route</span></button>
+          </div>
+        </div>
+
+        <div class="viewport">
+          <!-- First person AR -->
+          <div class="view active" id="firstView">
+            <iframe class="cc-frame" title="Claude first-person AR engine" src="cc-engine/?embed=first" loading="eager"></iframe>
+            <canvas id="firstCanvas"></canvas>
+            <div class="hud">
+              <div class="hudbox">
+                <div class="k">First Person · AR Windshield</div>
+                <div class="v" id="roadSign">I-5 NORTH</div>
+              </div>
+              <div class="guide-sign" aria-label="Next freeway guide sign">
+                <div class="gtab" id="guideTab">NEXT</div>
+                <div class="gcity" id="guideCity">--</div>
+                <div class="gdist num" id="guideDist">-- MILES</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Drone chase -->
+          <div class="view" id="droneView">
+            <iframe class="cc-frame" title="Claude drone chase engine" src="cc-engine/?embed=drone" loading="eager"></iframe>
+            <canvas id="droneCanvas"></canvas>
+            <div class="hud">
+              <div class="hudbox">
+                <div class="k">Drone Follow · Telemetry</div>
+                <div class="v" id="locationReadout">--</div>
+              </div>
+              <div class="hudbox">
+                <div class="k">GPS · Bearing</div>
+                <div class="v num" id="gpsReadout">--</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Overhead -->
+          <div class="view" id="overheadView">
+            <iframe class="cc-frame" title="Claude overhead route map" src="cc-engine/?embed=overhead" loading="eager"></iframe>
+            <canvas id="mapCanvas"></canvas>
+            <div id="googleTrafficMap" class="map-live" aria-label="Google traffic map"></div>
+            <div class="hud">
+              <div class="hudbox">
+                <div class="k">Overhead · Route Operations</div>
+                <div class="v">Irvine → Alameda</div>
+              </div>
+              <div class="hudbox">
+                <div class="k">Map Surface</div>
+                <div class="v" id="mapReadout">Route map</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ar-rail">
+          <div class="ar-cell"><div class="k">Speed</div><div class="v num" id="railSpeed">--</div></div>
+          <div class="ar-cell"><div class="k">Route mile</div><div class="v num" id="railMile">--</div></div>
+          <div class="ar-cell"><div class="k">Next stop</div><div class="v" id="railStop">--</div></div>
+          <div class="ar-cell"><div class="k">Section</div><div class="v" id="railSection">--</div></div>
+          <div class="ar-cell dim" id="railTrafficCell"><div class="k">Traffic</div><div class="v" id="railTraffic">--</div></div>
+        </div>
+      </section>
+
+      <section class="rightbar">
+        <div class="panel" id="intelPanelWrap">
+          <h2>Route Intel</h2>
+          <div id="intelPanel" class="intel">Waiting for route position…</div>
+        </div>
+        <div class="panel" id="stopsPanelWrap">
+          <h2>Next Stops Ahead</h2>
+          <div id="stopsList" class="stops-list"><div class="stops-empty">Looking up nearby stops along the route…</div></div>
+        </div>
+        <div class="panel" id="journeyPanel">
+          <h2>Journey Progress</h2>
+          <div class="journey-head">
+            <div class="jh-bar"><span id="jhFill"></span></div>
+            <div class="jh-meta"><span id="jhPct">0%</span><span id="jhMiles">0 / 0 mi</span></div>
+          </div>
+          <div id="timeline" class="timeline journey"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    /* ===================== Route + data (preserved) ===================== */
+    const route = [
+      { name: "Irvine", lat: 33.6846, lng: -117.8265, kind: "start", note: "The southern Orange County leg runs on the Santa Ana Freeway before I-5 bends northwest toward Los Angeles.", article: "Santa Ana Freeway" },
+      { name: "Anaheim", lat: 33.8366, lng: -117.9143, kind: "city", note: "Dense Orange County interchanges: Disney-adjacent traffic, SR 57, SR 91, and the Santa Ana Freeway corridor.", article: "Orange County urban section" },
+      { name: "Downtown Los Angeles", lat: 34.0522, lng: -118.2437, kind: "city", note: "I-5 passes the Eastside of Los Angeles and interchanges with the US 101 and I-10 systems before turning north.", article: "Los Angeles freeway web" },
+      { name: "Burbank / San Fernando Valley", lat: 34.1808, lng: -118.3089, kind: "city", note: "The route follows the Golden State Freeway through Glendale, Burbank, and the San Fernando Valley.", article: "Golden State Freeway" },
+      { name: "Santa Clarita", lat: 34.3917, lng: -118.5426, kind: "city", note: "The freeway leaves the Los Angeles Basin and starts the climb toward Castaic and the Tejon corridor.", article: "North Los Angeles County climb" },
+      { name: "Castaic Lake", lat: 34.5002, lng: -118.6230, kind: "landmark", note: "Castaic marks the transition from suburban freeway to mountain approach toward the Grapevine.", article: "Castaic approach" },
+      { name: "Gorman", lat: 34.7968, lng: -118.8520, kind: "landmark", note: "High desert mountain community near the top of the Grapevine approach; weather and grades start to matter here.", article: "Grapevine approach" },
+      { name: "Grapevine / Tejon Pass", lat: 34.8826, lng: -118.9222, kind: "landmark", note: "I-5 crosses Tejon Pass, then drops through the steep Five Mile Grade into the San Joaquin Valley.", article: "Tejon Pass and Five Mile Grade" },
+      { name: "Frazier Park", lat: 34.8228, lng: -118.9448, kind: "landmark", note: "Mountain-side access point near the pass; useful context for snow closures, wind, and grade-driven slow traffic.", article: "Mountain access" },
+      { name: "Wheeler Ridge", lat: 35.0052, lng: -118.9563, kind: "landmark", note: "At the valley floor, Route 99 splits north toward Bakersfield while I-5 continues as the West Side Freeway.", article: "Route 99 split" },
+      { name: "Buttonwillow", lat: 35.4005, lng: -119.4696, kind: "landmark", note: "West Side Freeway service stop area in the San Joaquin Valley, with long agricultural stretches between exits.", article: "West Side Freeway" },
+      { name: "Lost Hills", lat: 35.6161, lng: -119.6943, kind: "landmark", note: "Another key West Side service cluster before the route continues past open farms, canals, and energy infrastructure.", article: "Central Valley services" },
+      { name: "Kettleman City", lat: 36.0083, lng: -119.9607, kind: "city", note: "Major long-haul stop near SR 41 and the midpoint rhythm of the valley drive.", article: "Central Valley crossroads" },
+      { name: "Coalinga", lat: 36.1397, lng: -120.3602, kind: "landmark", note: "The article notes I-5 runs near the California Aqueduct and a major power-line corridor in this west valley stretch.", article: "Aqueduct and power corridor" },
+      { name: "Harris Ranch", lat: 36.2540, lng: -120.2378, kind: "landmark", note: "Recognizable I-5 travel landmark and rest/food cluster on the west side of the San Joaquin Valley.", article: "West Side landmark" },
+      { name: "Los Banos", lat: 37.0583, lng: -120.8499, kind: "city", note: "Northern valley approach where I-5 begins setting up the SR 152 crossing toward the coast and Bay Area.", article: "Northern San Joaquin Valley" },
+      { name: "Santa Nella / SR 152", lat: 37.0977, lng: -121.0160, kind: "city", note: "SR 152 connects west toward Gilroy and passes near San Luis Reservoir; this is a major I-5 decision point.", article: "SR 152 and San Luis Reservoir" },
+      { name: "I-580 Split", lat: 37.4716, lng: -121.1775, kind: "landmark", note: "For Alameda, the practical route leaves I-5 at I-580 near Tracy rather than continuing north to Sacramento.", article: "I-580 Bay Area connector" },
+      { name: "Tracy", lat: 37.7397, lng: -121.4252, kind: "city", note: "I-580 carries the trip over the Altamont corridor toward the East Bay; this is often a traffic-sensitive commuter zone.", article: "Altamont approach" },
+      { name: "Livermore", lat: 37.6819, lng: -121.7680, kind: "city", note: "East Bay valley segment after the I-580 connector; the drive changes from interstate trunk route to Bay Area approach.", article: "East Bay approach" },
+      { name: "Dublin / Pleasanton", lat: 37.7022, lng: -121.9358, kind: "city", note: "Major I-580/I-680 interchange area before the route bends toward Oakland.", article: "East Bay interchange" },
+      { name: "Oakland", lat: 37.8044, lng: -122.2712, kind: "city", note: "Final urban freeway network before crossing into Alameda.", article: "Oakland approach" },
+      { name: "Alameda", lat: 37.7652, lng: -122.2416, kind: "finish", note: "Destination off the I-580/Oakland approach, not directly on I-5; the simulator follows the practical Bay Area connector.", article: "Destination connector" }
+    ];
+
+    const glympse = { tag: "calcup26", token: "", invite: "", apiKey: "0SLq661pXHmqdWgI8Yb1", lastPoll: 0 };
+
+    const trafficZones = [
+      { name: "Orange County merge", start: 0, end: 34, base: 0.32 },
+      { name: "Los Angeles basin", start: 34, end: 68, base: 0.52 },
+      { name: "Santa Clarita grade", start: 68, end: 98, base: 0.34 },
+      { name: "Grapevine / Tejon Pass", start: 98, end: 124, base: 0.42 },
+      { name: "Central Valley open road", start: 124, end: 326, base: 0.14 },
+      { name: "Tracy / Altamont Pass", start: 326, end: 382, base: 0.46 },
+      { name: "East Bay approach", start: 382, end: 423, base: 0.55 }
+    ];
+
+    // category visual identity for AR + stop list
+    const POI_STYLE = {
+      gas:     { code: "GAS",  color: "#f2b134" },
+      charge:  { code: "EV",   color: "#34c77b" },
+      food:    { code: "FOOD", color: "#e8794a" },
+      rest:    { code: "REST", color: "#5fd0e6" },
+      lodging: { code: "STAY", color: "#b78bd6" },
+      landmark:{ code: "PT",   color: "#dbe6df" }
+    };
+
+    const state = {
+      mode: "live",
+      view: "first",
+      playing: true,
+      progress: 0,
+      simProgress: 0,
+      speedScale: 2.2,
+      source: "boot",
+      position: { lat: 34.639104, lng: -118.746817 },
+      routeMile: 0,
+      speedMph: 0,
+      heading: 0,
+      droneCamHeading: null,
+      trafficLevel: "clear",
+      trafficScore: 0.15,
+      trafficDelayMin: 0,
+      trafficSummary: "Flowing",
+      liveConditions: null,
+      liveConditionsStatus: "Waiting",
+      liveConditionsInFlight: false,
+      lastConditionsFetch: 0,
+      places: [],
+      placesStatus: "Waiting",
+      placesInFlight: false,
+      placesAnchor: null,
+      lastPlacesFetch: 0,
+      snaps: [],
+      snapStatus: "Waiting",
+      snapsInFlight: false,
+      snapAnchor: null,
+      lastSnapFetch: 0,
+      browserConfig: null,
+      trafficLayerWanted: false,
+      googleTrafficReady: false,
+      googleTrafficLoading: false,
+      googleMap: null,
+      googleMarker: null,
+      googleRouteLine: null,
+      lastLiveTime: 0,
+      log: []
+    };
+
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const first = document.getElementById("firstCanvas");
+    const drone = document.getElementById("droneCanvas");
+    const map = document.getElementById("mapCanvas");
+    const fctx = first.getContext("2d");
+    const dctx = drone.getContext("2d");
+    const mctx = map.getContext("2d");
+
+    const els = {
+      livePill: document.getElementById("livePill"),
+      livePillText: document.getElementById("livePillText"),
+      liveDot: document.getElementById("liveDot"),
+      liveText: document.getElementById("liveText"),
+      stripSection: document.getElementById("stripSection"),
+      stripSpeed: document.getElementById("stripSpeed"),
+      stripEta: document.getElementById("stripEta"),
+      stripProgress: document.getElementById("stripProgress"),
+      stripSync: document.getElementById("stripSync"),
+      mileMetric: document.getElementById("mileMetric"),
+      nextMetric: document.getElementById("nextMetric"),
+      trafficMetric: document.getElementById("trafficMetric"),
+      trafficSw: document.getElementById("trafficSw"),
+      delayMetric: document.getElementById("delayMetric"),
+      googleEtaMetric: document.getElementById("googleEtaMetric"),
+      weatherMetric: document.getElementById("weatherMetric"),
+      aqiMetric: document.getElementById("aqiMetric"),
+      caMarkerMetric: document.getElementById("caMarkerMetric"),
+      roadSign: document.getElementById("roadSign"),
+      guideTab: document.getElementById("guideTab"),
+      guideCity: document.getElementById("guideCity"),
+      guideDist: document.getElementById("guideDist"),
+      locationReadout: document.getElementById("locationReadout"),
+      gpsReadout: document.getElementById("gpsReadout"),
+      mapReadout: document.getElementById("mapReadout"),
+      mapsLink: document.getElementById("mapsLink"),
+      layerTraffic: document.getElementById("layerTraffic"),
+      googleTrafficMap: document.getElementById("googleTrafficMap"),
+      railSpeed: document.getElementById("railSpeed"),
+      railMile: document.getElementById("railMile"),
+      railStop: document.getElementById("railStop"),
+      railSection: document.getElementById("railSection"),
+      railTraffic: document.getElementById("railTraffic"),
+      railTrafficCell: document.getElementById("railTrafficCell"),
+      intelPanel: document.getElementById("intelPanel"),
+      stopsList: document.getElementById("stopsList"),
+      snapMapLink: document.getElementById("snapMapLink"),
+      snapList: document.getElementById("snapList"),
+      timeline: document.getElementById("timeline"),
+      log: document.getElementById("log")
+    };
+
+    /* ===================== Geo helpers (preserved) ===================== */
+    function milesBetween(a, b) {
+      const r = 3958.7613;
+      const dLat = (b.lat - a.lat) * Math.PI / 180;
+      const dLng = (b.lng - a.lng) * Math.PI / 180;
+      const la1 = a.lat * Math.PI / 180, la2 = b.lat * Math.PI / 180;
+      const h = Math.sin(dLat / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin(dLng / 2) ** 2;
+      return 2 * r * Math.asin(Math.sqrt(h));
+    }
+    function bearing(a, b) {
+      const y = Math.sin((b.lng - a.lng) * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180);
+      const x = Math.cos(a.lat * Math.PI / 180) * Math.sin(b.lat * Math.PI / 180) -
+        Math.sin(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.cos((b.lng - a.lng) * Math.PI / 180);
+      return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+    }
+    function projectLocal(p, origin) {
+      const latMiles = (p.lat - origin.lat) * 69.0;
+      const lngMiles = (p.lng - origin.lng) * 69.0 * Math.cos(origin.lat * Math.PI / 180);
+      return { x: lngMiles, y: latMiles };
+    }
+    function closestPointOnSegment(p, a, b) {
+      const pp = projectLocal(p, a), bb = projectLocal(b, a);
+      const len2 = bb.x * bb.x + bb.y * bb.y;
+      const rawT = len2 ? (pp.x * bb.x + pp.y * bb.y) / len2 : 0;
+      const t = Math.max(0, Math.min(1, rawT));
+      const x = bb.x * t, y = bb.y * t;
+      return { t, dist: Math.hypot(pp.x - x, pp.y - y) };
+    }
+    function interpolateRoute(progress) { return pointAtMile(progress * totalMiles); }
+    function pointAtMile(targetMile) {
+      const target = Math.max(0, Math.min(totalMiles, targetMile));
+      for (let i = 0; i < route.length - 1; i++) {
+        const a = route[i], b = route[i + 1];
+        if (target <= b.mile) {
+          const segMiles = b.mile - a.mile || 1;
+          const t = (target - a.mile) / segMiles;
+          return { lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t, heading: bearing(a, b), index: i };
+        }
+      }
+      const last = route[route.length - 1];
+      return { lat: last.lat, lng: last.lng, heading: 300, index: route.length - 2 };
+    }
+    function projectToRoute(pos) {
+      let best = { mile: 0, dist: Infinity, index: 0, t: 0 };
+      for (let i = 0; i < route.length - 1; i++) {
+        const hit = closestPointOnSegment(pos, route[i], route[i + 1]);
+        const mile = route[i].mile + hit.t * (route[i + 1].mile - route[i].mile);
+        if (hit.dist < best.dist) best = { mile, dist: hit.dist, index: i, t: hit.t };
+      }
+      return best;
+    }
+    function fmtMiles(n) { if (!Number.isFinite(n)) return "--"; return n < 10 ? n.toFixed(1) : Math.round(n).toString(); }
+    function angleDiff(a, b) { return (a - b + 540) % 360 - 180; }
+    function lerp(a, b, t) { return a + (b - a) * t; }
+
+    function log(message) {
+      const stamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      state.log.unshift(`${stamp} ${message}`);
+      state.log = state.log.slice(0, 8);
+      els.log.textContent = state.log.join("\n");
+    }
+
+    for (let i = 0; i < route.length; i++) route[i].mile = i === 0 ? 0 : route[i - 1].mile + milesBetween(route[i - 1], route[i]);
+    const totalMiles = route[route.length - 1].mile;
+
+    function resizeCanvas(canvas) {
+      const rect = canvas.getBoundingClientRect();
+      const ratio = Math.max(1, window.devicePixelRatio || 1);
+      const w = Math.max(1, Math.floor(rect.width * ratio));
+      const h = Math.max(1, Math.floor(rect.height * ratio));
+      if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+      return { w, h, ratio };
+    }
+
+    /* ===================== Glympse decode (preserved) ===================== */
+    function decodeTrail(rows) {
+      if (!Array.isArray(rows) || !rows.length) return null;
+      let cur = rows[0].slice();
+      const points = [];
+      for (let i = 0; i < rows.length; i++) {
+        if (i === 0) cur = rows[i].slice();
+        else cur = cur.map((v, idx) => v + rows[i][idx]);
+        points.push({ time: cur[0], lat: cur[1] / 1000000, lng: cur[2] / 1000000, altitude: cur[3], speedRaw: cur[4], headingRaw: cur[5] });
+      }
+      return points;
+    }
+    function decodeSpeed(raw) { if (!Number.isFinite(raw)) return 0; if (raw > 220) return raw / 4.47; return raw; }
+
+    /* ===================== Traffic model (preserved) ===================== */
+    function zoneForMile(mile) { return trafficZones.find(z => mile >= z.start && mile <= z.end) || trafficZones[trafficZones.length - 1]; }
+    function trafficColor(score) {
+      if (score >= .82) return "#d83b32";
+      if (score >= .58) return "#e88926";
+      if (score >= .34) return "#e7c84f";
+      return "#49a85f";
+    }
+    function trafficLabel(score) {
+      if (score >= .82) return "Jammed";
+      if (score >= .58) return "Heavy";
+      if (score >= .34) return "Moderate";
+      return "Clear";
+    }
+    function updateTrafficModel() {
+      const zone = zoneForMile(state.routeMile);
+      const speed = Number.isFinite(state.speedMph) ? state.speedMph : 65;
+      let speedScore = 0.12;
+      if (speed < 8) speedScore = .92;
+      else if (speed < 22) speedScore = .78;
+      else if (speed < 42) speedScore = .55;
+      else if (speed < 58) speedScore = .32;
+      const timePulse = (Math.sin(Date.now() / 180000 + state.routeMile * .035) + 1) * .07;
+      const score = Math.max(0, Math.min(1, zone.base * .55 + speedScore * .45 + timePulse));
+      state.trafficScore = score;
+      state.trafficLevel = trafficLabel(score).toLowerCase();
+      state.trafficSummary = `${trafficLabel(score)} near ${zone.name}`;
+      state.trafficDelayMin = Math.round(score * score * 34);
+    }
+    function segmentTrafficScore(mile) {
+      const zone = zoneForMile(mile);
+      const near = Math.max(0, 1 - Math.abs(mile - state.routeMile) / 24);
+      const liveBoost = state.trafficScore * near * .55;
+      const pulse = (Math.sin(Date.now() / 230000 + mile * .071) + 1) * .06;
+      return Math.max(0, Math.min(1, zone.base * .75 + liveBoost + pulse));
+    }
+
+    /* ===================== Route context ===================== */
+    function getRouteContext(mile) {
+      let section = "East Bay approach", terrain = "hills";
+      if (mile < route[2].mile) { section = "Santa Ana Freeway"; terrain = "urban"; }
+      else if (mile < route[5].mile) { section = "Golden State Freeway"; terrain = "urban"; }
+      else if (mile < route[7].mile) { section = "Castaic / Grapevine approach"; terrain = "canyon"; }
+      else if (mile < route[9].mile) { section = "Tejon Pass / Five Mile Grade"; terrain = "mountain"; }
+      else if (mile < route[17].mile) { section = "West Side Freeway"; terrain = "valley"; }
+      else if (mile < route[18].mile) { section = "I-580 connector"; terrain = "hills"; }
+      else { section = "East Bay approach"; terrain = "hills"; }
+      return { section, terrain };
+    }
+    function currentSegmentName() { const pos = interpolateRoute(state.progress); return `${route[pos.index].name} → ${route[pos.index + 1].name}`; }
+    function currentRoutePoint() {
+      let best = route[0], bestDist = Infinity;
+      for (const p of route) { const d = Math.abs(p.mile - state.routeMile); if (d < bestDist) { best = p; bestDist = d; } }
+      return best;
+    }
+    function approxCaI5Marker() { if (state.routeMile > route[17].mile) return "I-580"; return `~${Math.round(state.routeMile + 96)}`; }
+    function nextLandmark() { return route.find(p => p.mile > state.routeMile + 0.3) || route[route.length - 1]; }
+
+    /* ===================== Live conditions + places ===================== */
+    function apiBase() {
+      return ["127.0.0.1", "localhost"].includes(location.hostname) && location.port === "4188"
+        ? "http://localhost:3000" : "";
+    }
+    function liveConditionsUrl() {
+      const params = new URLSearchParams({
+        lat: state.position.lat.toFixed(6), lng: state.position.lng.toFixed(6),
+        destLat: route[route.length - 1].lat.toFixed(6), destLng: route[route.length - 1].lng.toFixed(6)
+      });
+      return `${apiBase()}/api/live-conditions?${params}`;
+    }
+    async function fetchLiveConditions(force = false) {
+      const now = Date.now();
+      if (state.liveConditionsInFlight) return;
+      if (!force && now - state.lastConditionsFetch < 120000) return;
+      state.liveConditionsInFlight = true;
+      state.lastConditionsFetch = now;
+      try {
+        const response = await fetch(liveConditionsUrl(), { cache: "no-store" });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
+        state.liveConditions = data;
+        state.liveConditionsStatus = data.sources?.errors?.length ? "Partial Google data" : "Google live";
+        if (data.traffic?.severity) {
+          const severityScore = { clear: .14, light: .32, moderate: .54, heavy: .78 };
+          state.trafficScore = Math.max(state.trafficScore, severityScore[data.traffic.severity] || state.trafficScore);
+          state.trafficDelayMin = data.traffic.trafficDelayMinutes ?? state.trafficDelayMin;
+        }
+        log(`Google live conditions updated: ${state.liveConditionsStatus}.`);
+      } catch (error) {
+        state.liveConditionsStatus = "Google API unavailable";
+        log(`Google live conditions unavailable: ${error.message}`);
+      } finally { state.liveConditionsInFlight = false; }
+    }
+
+    async function fetchPlaces(force = false) {
+      const now = Date.now();
+      if (state.placesInFlight) return;
+      const movedFar = !state.placesAnchor || milesBetween(state.placesAnchor, state.position) > 8;
+      if (!force && !movedFar && now - state.lastPlacesFetch < 90000) return;
+      state.placesInFlight = true;
+      state.lastPlacesFetch = now;
+      state.placesAnchor = { lat: state.position.lat, lng: state.position.lng };
+      try {
+        const params = new URLSearchParams({
+          lat: state.position.lat.toFixed(6), lng: state.position.lng.toFixed(6),
+          radius: "45000", max: "3"
+        });
+        const response = await fetch(`${apiBase()}/api/places?${params}`, { cache: "no-store" });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
+        state.places = (data.places || []).filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
+        state.placesStatus = data.sources?.errors?.length ? "Partial" : "Live";
+        log(`Places updated: ${state.places.length} stops nearby (${state.placesStatus}).`);
+      } catch (error) {
+        state.placesStatus = "Unavailable";
+        log(`Places unavailable: ${error.message}`);
+      } finally { state.placesInFlight = false; }
+    }
+
+    // EXPERIMENTAL: public Snap Map "stories along the route" via the api/snap-stories
+    // proxy (Snap endpoints have no CORS, so this only works behind a backend).
+    async function fetchSnapStories(force = false) {
+      const now = Date.now();
+      if (state.snapsInFlight) return;
+      const moved = !state.snapAnchor || milesBetween(state.snapAnchor, state.position) > 6;
+      if (!force && !moved && now - state.lastSnapFetch < 60000) return;
+      state.snapsInFlight = true;
+      state.lastSnapFetch = now;
+      state.snapAnchor = { lat: state.position.lat, lng: state.position.lng };
+      try {
+        const params = new URLSearchParams({
+          lat: state.position.lat.toFixed(6), lng: state.position.lng.toFixed(6),
+          radius: "12000", max: "12"
+        });
+        const response = await fetch(`${apiBase()}/api/snap-stories?${params}`, { cache: "no-store" });
+        const data = await response.json();
+        state.snaps = Array.isArray(data.snaps) ? data.snaps : [];
+        state.snapStatus = data.ok ? (state.snaps.length ? "Live" : "Empty") : "Unavailable";
+        if (data.mapUrl) els.snapMapLink.href = data.mapUrl;
+      } catch (error) {
+        state.snapStatus = "Unavailable";
+      } finally {
+        state.snapsInFlight = false;
+        renderSnaps();
+      }
+    }
+
+    function renderSnaps() {
+      if (!state.snaps.length) {
+        els.snapList.innerHTML = `<div class="stops-empty">${
+          state.snapStatus === "Unavailable" ? "Public Snaps need the Snap proxy backend (deploy api/snap-stories)." :
+          state.snapStatus === "Empty" ? "No public Snaps near this stretch right now." :
+          "Looking for public Snaps near the route…"}</div>`;
+        return;
+      }
+      els.snapList.innerHTML = state.snaps.map(s => {
+        const ago = s.timestampMs ? timeAgo(s.timestampMs) : "";
+        const isImg = s.mediaType === 0 && s.mediaUrl;
+        const thumb = isImg
+          ? `<img class="snap-thumb" src="${s.mediaUrl}" loading="lazy" referrerpolicy="no-referrer" onerror="this.classList.add('ph');this.removeAttribute('src');this.textContent='▶';">`
+          : `<div class="snap-thumb ph">▶</div>`;
+        return `<div class="snap-card">${thumb}<span class="snap-age">${ago}</span></div>`;
+      }).join("");
+    }
+
+    async function fetchBrowserConfig() {
+      if (state.browserConfig) return state.browserConfig;
+      try {
+        const response = await fetch(`${apiBase()}/api/browser-config`, { cache: "no-store" });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || `HTTP ${response.status}`);
+        state.browserConfig = data;
+        return data;
+      } catch (error) { state.browserConfig = {}; log(`Browser config unavailable: ${error.message}`); return state.browserConfig; }
+    }
+
+    /* ===================== POI targeting (AR) ===================== */
+    // Returns POIs ahead of the vehicle with relative bearing + distance.
+    function aheadTargets(maxFwdAngle, maxMiles) {
+      const veh = state.position;
+      const out = [];
+      for (const p of state.places) {
+        const d = milesBetween(veh, p);
+        if (d > maxMiles) continue;
+        const rel = angleDiff(bearing(veh, p), state.heading);
+        if (Math.abs(rel) > maxFwdAngle) continue;
+        out.push({ kind: p.category, name: p.name, dist: d, rel, rating: p.rating });
+      }
+      for (const p of route) {
+        if (p.mile <= state.routeMile + 0.4) continue;
+        const d = p.mile - state.routeMile;
+        if (d > maxMiles) continue;
+        const rel = angleDiff(bearing(veh, p), state.heading);
+        if (Math.abs(rel) > maxFwdAngle) continue;
+        out.push({ kind: "landmark", name: p.name.split(" / ")[0], dist: d, rel });
+      }
+      out.sort((a, b) => b.dist - a.dist); // far first so near ones paint on top
+      return out;
+    }
+
+    function applyPosition(lat, lng, speedMph, headingDeg, source) {
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const projected = projectToRoute({ lat, lng });
+      state.position = { lat, lng };
+      state.routeMile = projected.mile;
+      state.progress = Math.max(0, Math.min(1, projected.mile / totalMiles));
+      const along = interpolateRoute(state.progress);
+      state.heading = Number.isFinite(headingDeg) ? headingDeg : along.heading;
+      state.speedMph = Number.isFinite(speedMph) && speedMph > 0 ? speedMph : 62;
+      state.source = source;
+      updateTrafficModel();
+      updateGoogleTrafficMap();
+      fetchLiveConditions();
+      fetchPlaces();
+      fetchSnapStories();
+    }
+
+    /* ===================== Live sync (preserved) ===================== */
+    async function livePoll() {
+      state.source = "syncing";
+      setLive("warn", "Syncing public Glympse tag");
+      try {
+        if (!glympse.token) {
+          const loginUrl = `https://api.glympse.com/v2/account/login?username=viewer&password=password&api_key=${encodeURIComponent(glympse.apiKey)}`;
+          const loginRes = await fetch(loginUrl);
+          if (!loginRes.ok) throw new Error(`viewer login HTTP ${loginRes.status}`);
+          const login = await loginRes.json();
+          glympse.token = login.response && login.response.access_token;
+          if (!glympse.token) throw new Error("viewer login did not return a token");
+          log("Viewer token acquired.");
+        }
+        if (!glympse.invite) {
+          const groupRes = await fetch(`https://api.glympse.com/v2/groups/${glympse.tag}`, { headers: { Authorization: `Bearer ${glympse.token}` } });
+          if (!groupRes.ok) throw new Error(`group HTTP ${groupRes.status}`);
+          const group = await groupRes.json();
+          const member = group.response && group.response.members && group.response.members[0];
+          if (!member || !member.invite) throw new Error("tag has no active invite");
+          glympse.invite = member.invite;
+          log(`Active invite ${glympse.invite} found for !${glympse.tag}.`);
+        }
+        const inviteRes = await fetch(`https://api.glympse.com/v2/invites/${glympse.invite}`, { headers: { Authorization: `Bearer ${glympse.token}` } });
+        if (!inviteRes.ok) throw new Error(`invite HTTP ${inviteRes.status}`);
+        const invite = await inviteRes.json();
+        const points = decodeTrail(invite.response && invite.response.location);
+        if (!points || !points.length) throw new Error("invite has no location trail");
+        const last = points[points.length - 1];
+        applyPosition(last.lat, last.lng, decodeSpeed(last.speedRaw), last.headingRaw / 10, "live");
+        state.lastLiveTime = Date.now();
+        glympse.lastPoll = Date.now();
+        setLive("live", `Live: ${points.length} trail samples from !${glympse.tag}`);
+        log(`Live GPS ${last.lat.toFixed(5)}, ${last.lng.toFixed(5)}.`);
+      } catch (err) {
+        setLive("warn", "Live sync unavailable; using simulator/manual GPS");
+        log(`Live sync failed: ${err.message}`);
+        if (state.mode === "live") state.source = "fallback";
+      }
+    }
+
+    function setLive(kind, text) {
+      els.liveDot.className = `dot ${kind === "live" ? "live" : kind === "warn" ? "warn" : ""}`;
+      els.liveText.textContent = text;
+      const cls = kind === "live" ? "live" : kind === "warn" ? "warn" : "off";
+      els.livePill.className = `pill ${cls}`;
+      els.livePillText.textContent = kind === "live" ? "LIVE" : kind === "warn" ? "SYNC / SIM" : "OFFLINE";
+    }
+
+    /* ===================== Metrics + sidebars ===================== */
+    function updateMetrics() {
+      const ctx = getRouteContext(state.routeMile);
+      const next = nextLandmark();
+      const ahead = Math.max(0, next.mile - state.routeMile);
+      const onBay = state.routeMile > route[19].mile;
+
+      els.stripSection.textContent = ctx.section;
+      els.stripSpeed.innerHTML = state.speedMph ? `${Math.round(state.speedMph)} <small>mph</small>` : "--";
+      // smooth the speed used for the fallback ETA so it doesn't jump with each fix
+      if (state.speedMph > 8) state.etaSpeed = state.etaSpeed ? state.etaSpeed * 0.88 + state.speedMph * 0.12 : state.speedMph;
+      const eta = tripEta();
+      if (eta.arrived) { els.stripEta.textContent = "Arrived"; els.stripEta.title = "Destination reached"; }
+      else { els.stripEta.innerHTML = `${fmtRemaining(eta.minutes)} <small>· ${clockAt(eta.minutes)}</small>`; els.stripEta.title = eta.source; }
+      els.stripProgress.textContent = `${Math.round(state.progress * 100)}%`;
+      els.stripSync.textContent = state.lastLiveTime ? timeAgo(state.lastLiveTime) : (state.mode === "sim" ? "sim" : "--");
+
+      els.mileMetric.textContent = fmtMiles(state.routeMile);
+      els.nextMetric.textContent = next.name.split(" / ")[0];
+      els.trafficMetric.textContent = trafficLabel(state.trafficScore);
+      els.trafficSw.style.background = trafficColor(state.trafficScore);
+      els.delayMetric.textContent = `${state.trafficDelayMin} min`;
+      const live = state.liveConditions;
+      els.googleEtaMetric.textContent = live?.traffic?.durationMinutes ? `${live.traffic.durationMinutes} min` : "--";
+      els.weatherMetric.textContent = live?.weather?.temperatureF != null ? `${Math.round(live.weather.temperatureF)}° ${live.weather.condition}` : "--";
+      els.aqiMetric.textContent = live?.airQuality?.aqi != null ? `${live.airQuality.aqi} ${live.airQuality.category}` : "--";
+      els.caMarkerMetric.textContent = approxCaI5Marker();
+
+      els.roadSign.textContent = onBay ? "I-580 / BAY AREA" : "I-5 NORTH";
+      els.guideTab.textContent = next.kind === "finish" ? "EXIT" : "NEXT EXIT";
+      els.guideCity.textContent = next.name.split(" / ")[0];
+      els.guideDist.textContent = `${fmtMiles(ahead)} MILES`;
+
+      els.locationReadout.textContent = currentSegmentName();
+      els.gpsReadout.textContent = `${state.position.lat.toFixed(4)}, ${state.position.lng.toFixed(4)} · ${Math.round(state.heading)}°`;
+
+      const nearestStop = state.places[0];
+      els.railSpeed.innerHTML = state.speedMph ? `${Math.round(state.speedMph)}<small style="font-size:11px;color:var(--muted)"> mph</small>` : "--";
+      els.railMile.textContent = `${fmtMiles(state.routeMile)} / ${fmtMiles(totalMiles)}`;
+      els.railStop.textContent = nearestStop ? `${POI_STYLE[nearestStop.category]?.code || ""} · ${nearestStop.name}` : (state.placesStatus === "Unavailable" ? "n/a" : "…");
+      els.railSection.textContent = ctx.section;
+      const trafficAllowed = state.view !== "first";
+      els.railTrafficCell.classList.toggle("dim", !trafficAllowed);
+      els.railTraffic.textContent = trafficAllowed ? `${trafficLabel(state.trafficScore)} · ${state.trafficDelayMin}m` : "off (first-person)";
+      els.railTraffic.style.color = trafficAllowed ? trafficColor(state.trafficScore) : "";
+
+      const intel = currentRoutePoint();
+      els.intelPanel.innerHTML = `<strong>${intel.article}</strong>${intel.note}`;
+
+      els.mapsLink.href = `https://www.google.com/maps/search/?api=1&query=${state.position.lat.toFixed(6)},${state.position.lng.toFixed(6)}`;
+      els.snapMapLink.href = `https://map.snapchat.com/@${state.position.lat.toFixed(5)},${state.position.lng.toFixed(5)},12z`;
+
+      updateJourneyRail();
+      renderStops();
+    }
+
+    function renderStops() {
+      if (!state.places.length) {
+        els.stopsList.innerHTML = `<div class="stops-empty">${
+          state.placesStatus === "Unavailable"
+            ? "Live stops need the Places API enabled on the server key (run via vercel dev)."
+            : "Looking up nearby stops along the route…"}</div>`;
+        return;
+      }
+      els.stopsList.innerHTML = state.places.slice(0, 7).map(p => {
+        const st = POI_STYLE[p.category] || POI_STYLE.landmark;
+        const rating = p.rating ? `★ ${p.rating.toFixed(1)}` : (p.address || st.code);
+        return `<div class="poi">
+          <div class="ico" style="background:${st.color}">${st.code}</div>
+          <div class="nm"><b>${escapeHtml(p.name)}</b><span>${escapeHtml(String(rating))}</span></div>
+          <div class="d num">${p.distanceMiles != null ? p.distanceMiles + " mi" : ""}</div>
+        </div>`;
+      }).join("");
+    }
+    function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+    function timeAgo(t) { const s = Math.round((Date.now() - t) / 1000); if (s < 60) return `${s}s`; if (s < 3600) return `${Math.round(s / 60)}m`; return `${Math.round(s / 3600)}h`; }
+
+    /* ===================== Journey Progress rail ===================== */
+    // Built once; only live bits (classes, distances, ETA, you-are-here, fill)
+    // update each frame so click-to-expand state survives.
+    const jNodeEls = [];
+    let jYouHere = null, jhFill = null, jhPct = null, jhMiles = null, yhSub = null;
+    let jBuilt = false, jLastNextIdx = -1;
+
+    function etaStr(deltaMi) {
+      const sp = state.speedMph > 5 ? state.speedMph : 62;
+      const min = deltaMi / sp * 60;
+      if (min < 1) return "~now";
+      if (min < 90) return `~${Math.round(min)}m`;
+      return `~${(min / 60).toFixed(1)}h`;
+    }
+
+    // Trip ETA to the destination: prefer Google's traffic-aware duration when the
+    // backend is live; otherwise estimate from a smoothed live (Glympse) speed.
+    function tripEta() {
+      const remainingMi = Math.max(0, totalMiles - state.routeMile);
+      if (remainingMi < 0.4) return { arrived: true };
+      const g = state.liveConditions?.traffic?.durationMinutes;
+      if (Number.isFinite(g) && g > 0) return { arrived: false, minutes: g, source: "Traffic-aware ETA (Google)" };
+      const sp = state.etaSpeed > 8 ? state.etaSpeed : (state.speedMph > 8 ? state.speedMph : 62);
+      return { arrived: false, minutes: remainingMi / sp * 60, source: "Estimated from live speed (Glympse)" };
+    }
+    function fmtRemaining(min) {
+      const m = Math.max(0, Math.round(min)), h = Math.floor(m / 60), mm = m % 60;
+      return h > 0 ? `${h}h ${mm}m` : `${mm}m`;
+    }
+    function clockAt(minFromNow) {
+      return new Date(Date.now() + minFromNow * 60000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    }
+
+    function buildJourneyRail() {
+      const tl = els.timeline;
+      tl.innerHTML = "";
+      jNodeEls.length = 0;
+      jYouHere = document.createElement("div");
+      jYouHere.className = "youhere";
+      jYouHere.innerHTML = `<div class="yh-label">You are here</div><div class="yh-sub" id="yhSub">--</div>`;
+      route.forEach((p, i) => {
+        const caMarker = p.mile > route[17].mile ? "I-580 connector" : `approx CA I-5 marker ${Math.round(p.mile + 96)}`;
+        const el = document.createElement("div");
+        el.className = "jstop";
+        el.dataset.i = String(i);
+        el.innerHTML =
+          `<div class="jstop-head"><span class="jname">${p.name}</span><span class="jbadge"></span><span class="jdist"></span></div>` +
+          `<div class="jdetail">mile ${fmtMiles(p.mile)} · ${caMarker}<br>${p.note}</div>`;
+        tl.appendChild(el);
+        jNodeEls.push({ badge: el.querySelector(".jbadge"), dist: el.querySelector(".jdist"), el });
+      });
+      jhFill = document.getElementById("jhFill");
+      jhPct = document.getElementById("jhPct");
+      jhMiles = document.getElementById("jhMiles");
+      jBuilt = true;
+      jLastNextIdx = -1;
+      // click any stop to pin its details open
+      tl.addEventListener("click", e => {
+        const stop = e.target.closest(".jstop");
+        if (stop) stop.classList.toggle("expanded");
+      });
+    }
+
+    function updateJourneyRail() {
+      if (!jBuilt) return;
+      const rm = state.routeMile;
+      const pct = Math.max(0, Math.min(100, rm / totalMiles * 100));
+      jhFill.style.width = pct.toFixed(1) + "%";
+      jhPct.textContent = `${Math.round(pct)}%`;
+      jhMiles.textContent = `${fmtMiles(rm)} / ${fmtMiles(totalMiles)} mi`;
+      let nextIdx = route.findIndex(p => p.mile > rm + 0.3);
+      if (nextIdx === -1) nextIdx = route.length;
+      for (let i = 0; i < route.length; i++) {
+        const p = route[i], n = jNodeEls[i];
+        const passed = i < nextIdx;
+        const isNext = i === nextIdx;
+        n.el.classList.toggle("passed", passed);
+        n.el.classList.toggle("next", isNext);
+        const delta = p.mile - rm;
+        n.dist.textContent = delta > 0 ? `${fmtMiles(delta)} mi · ${etaStr(delta)}` : "passed";
+        n.badge.textContent = isNext ? "NEXT" : (p.kind === "finish" ? "DEST" : "");
+      }
+      if (nextIdx !== jLastNextIdx) {
+        if (nextIdx >= route.length) els.timeline.appendChild(jYouHere);
+        else els.timeline.insertBefore(jYouHere, jNodeEls[nextIdx].el);
+        jLastNextIdx = nextIdx;
+      }
+      if (!yhSub) yhSub = document.getElementById("yhSub");
+      if (yhSub) yhSub.textContent = `${state.speedMph ? Math.round(state.speedMph) + " mph · " : ""}${getRouteContext(rm).section}`;
+    }
+
+    /* ===================== FIRST PERSON — AR windshield ===================== */
+    const TERRAIN_SKY = {
+      urban:    ["#5d7f93", "#c2b79a"],
+      canyon:   ["#7c93a0", "#d3bd95"],
+      mountain: ["#6f8ea6", "#cdd2cf"],
+      valley:   ["#83a6bb", "#e2d8b0"],
+      hills:    ["#6f93a3", "#d8cba6"]
+    };
+    function drawFirst(now) {
+      // First person is rendered by the photorealistic cc-engine iframe beneath
+      // this canvas. Keep the canvas transparent so the engine shows through.
+      const { w, h } = resizeCanvas(first);
+      fctx.clearRect(0, 0, w, h);
+      return;
+      const ctx = getRouteContext(state.routeMile);
+      const horizon = h * 0.49;
+
+      const sky = fctx.createLinearGradient(0, 0, 0, horizon);
+      const [s0, s1] = TERRAIN_SKY[ctx.terrain] || TERRAIN_SKY.valley;
+      sky.addColorStop(0, s0); sky.addColorStop(1, s1);
+      fctx.fillStyle = sky; fctx.fillRect(0, 0, w, horizon);
+
+      drawTerrain(fctx, w, h, horizon, ctx.terrain, now);
+
+      const grd = fctx.createLinearGradient(0, horizon, 0, h);
+      grd.addColorStop(0, ctx.terrain === "valley" ? "#b7a878" : "#9c9472");
+      grd.addColorStop(1, "#5f5b46");
+      fctx.fillStyle = grd; fctx.fillRect(0, horizon, w, h - horizon);
+
+      const roadTop = horizon + 1;
+      fctx.fillStyle = "#2f3335";
+      fctx.beginPath();
+      fctx.moveTo(w * .435, roadTop); fctx.lineTo(w * .565, roadTop);
+      fctx.lineTo(w * .92, h); fctx.lineTo(w * .08, h); fctx.closePath(); fctx.fill();
+
+      fctx.strokeStyle = "#e9e1c4"; fctx.lineWidth = Math.max(3, w * .005);
+      fctx.beginPath();
+      fctx.moveTo(w * .40, roadTop); fctx.lineTo(w * .06, h);
+      fctx.moveTo(w * .60, roadTop); fctx.lineTo(w * .94, h); fctx.stroke();
+
+      const moving = state.playing ? Math.max(.25, state.speedMph / 70) : 0;
+      const dashOffset = (now * .14 * moving) % 80;
+      fctx.strokeStyle = "#f4de7f"; fctx.lineWidth = Math.max(2, w * .0035);
+      for (const laneX of [0.5 - 0.16, 0.5 + 0.16]) {
+        for (let i = 0; i < 12; i++) {
+          const z = (i * 80 + dashOffset) / 880;
+          const y1 = roadTop + (h - roadTop) * z;
+          const y2 = roadTop + (h - roadTop) * Math.min(1, z + .04);
+          const spread1 = (laneX - .5) * (1 + z * 4.6);
+          const spread2 = (laneX - .5) * (1 + Math.min(1, z + .04) * 4.6);
+          fctx.beginPath();
+          fctx.moveTo(w * (.5 + spread1), y1);
+          fctx.lineTo(w * (.5 + spread2), y2);
+          fctx.stroke();
+        }
+      }
+
+      // AR lane-guidance ribbon
+      fctx.save();
+      const ribbon = fctx.createLinearGradient(0, roadTop, 0, h);
+      ribbon.addColorStop(0, "rgba(95,208,230,0)");
+      ribbon.addColorStop(1, "rgba(95,208,230,.30)");
+      fctx.fillStyle = ribbon;
+      fctx.beginPath();
+      fctx.moveTo(w * .5 - w * .006, roadTop); fctx.lineTo(w * .5 + w * .006, roadTop);
+      fctx.lineTo(w * .5 + w * .10, h); fctx.lineTo(w * .5 - w * .10, h); fctx.closePath(); fctx.fill();
+      fctx.restore();
+
+      // AR POI waypoint tags
+      const targets = aheadTargets(46, 42);
+      for (const t of targets) drawArTag(fctx, w, h, horizon, t);
+
+      // dashboard silhouette (cockpit)
+      const dash = fctx.createLinearGradient(0, h * .86, 0, h);
+      dash.addColorStop(0, "rgba(8,11,12,0)"); dash.addColorStop(.4, "rgba(8,11,12,.85)"); dash.addColorStop(1, "#06090a");
+      fctx.fillStyle = dash;
+      fctx.beginPath();
+      fctx.moveTo(0, h); fctx.lineTo(0, h * .95);
+      fctx.quadraticCurveTo(w * .5, h * .80, w, h * .95);
+      fctx.lineTo(w, h); fctx.closePath(); fctx.fill();
+
+      const vig = fctx.createRadialGradient(w * .5, h * .42, h * .2, w * .5, h * .42, h * .9);
+      vig.addColorStop(0, "rgba(0,0,0,0)"); vig.addColorStop(1, "rgba(0,0,0,.28)");
+      fctx.fillStyle = vig; fctx.fillRect(0, 0, w, h);
+    }
+
+    function drawTerrain(ctx, w, h, horizon, terrain, now) {
+      const shift = (state.progress * 1400 + now * .004) % (w * .7);
+      if (terrain === "mountain" || terrain === "canyon") {
+        ctx.fillStyle = terrain === "mountain" ? "#5b6b6e" : "#7d7a5f";
+        for (let i = -1; i < 4; i++) {
+          const x = i * w * .42 - shift * .3;
+          const peak = terrain === "mountain" ? .20 : .30;
+          ctx.beginPath();
+          ctx.moveTo(x, horizon);
+          ctx.lineTo(x + w * .21, horizon - h * peak);
+          ctx.lineTo(x + w * .42, horizon); ctx.closePath(); ctx.fill();
+        }
+      } else if (terrain === "valley") {
+        ctx.strokeStyle = "rgba(60,70,72,.5)"; ctx.lineWidth = 2;
+        for (let i = -1; i < 7; i++) {
+          const x = (i * w * .16 - shift * .5);
+          ctx.beginPath(); ctx.moveTo(x, horizon - h * .06); ctx.lineTo(x, horizon); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(x - 6, horizon - h * .05); ctx.lineTo(x + 6, horizon - h * .05); ctx.stroke();
+        }
+      } else if (terrain === "urban") {
+        ctx.fillStyle = "rgba(54,64,70,.85)";
+        for (let i = -1; i < 9; i++) {
+          const x = i * w * .12 - shift * .55;
+          const bh = h * (.05 + ((i * 37) % 11) / 90);
+          ctx.fillRect(x, horizon - bh, w * .085, bh);
+        }
+      } else {
+        ctx.fillStyle = "#6f7a6a";
+        for (let i = -1; i < 5; i++) {
+          const x = i * w * .4 - shift * .3;
+          ctx.beginPath(); ctx.moveTo(x, horizon); ctx.quadraticCurveTo(x + w * .2, horizon - h * .12, x + w * .4, horizon); ctx.closePath(); ctx.fill();
+        }
+      }
+    }
+
+    function drawArTag(ctx, w, h, horizon, t) {
+      const st = POI_STYLE[t.kind] || POI_STYLE.landmark;
+      const fov = 50;
+      const depthT = Math.min(1, t.dist / 42);
+      const x = w * 0.5 + (t.rel / fov) * (w * 0.5);
+      const y = horizon - h * 0.02 - (1 - depthT) * h * 0.30;
+      const scale = lerp(1.15, 0.55, depthT);
+      const alpha = lerp(1, 0.5, depthT);
+
+      const padX = 11 * scale, padY = 7 * scale;
+      const fontMain = Math.max(10, 15 * scale);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.font = `700 ${fontMain}px ${getFont()}`;
+      const label = t.name.toUpperCase();
+      const distTxt = t.dist < 10 ? t.dist.toFixed(1) + " MI" : Math.round(t.dist) + " MI";
+      const codeW = 30 * scale;
+      const textW = ctx.measureText(label).width;
+      const boxW = codeW + textW + padX * 2 + 8 * scale;
+      const boxH = fontMain + padY * 2 + 11 * scale;
+      const bx = Math.max(6, Math.min(w - boxW - 6, x - boxW / 2));
+      const by = y - boxH;
+
+      ctx.strokeStyle = "rgba(95,208,230,.55)"; ctx.lineWidth = Math.max(1, 1.5 * scale);
+      ctx.beginPath(); ctx.moveTo(x, by + boxH); ctx.lineTo(x, y + 14 * scale); ctx.stroke();
+      ctx.fillStyle = st.color;
+      ctx.beginPath(); ctx.arc(x, y + 16 * scale, 3.2 * scale, 0, Math.PI * 2); ctx.fill();
+
+      roundRect(ctx, bx, by, boxW, boxH, 7 * scale);
+      ctx.fillStyle = "rgba(10,15,16,.72)"; ctx.fill();
+      ctx.lineWidth = Math.max(1, 1.2 * scale); ctx.strokeStyle = "rgba(255,255,255,.18)"; ctx.stroke();
+
+      roundRect(ctx, bx + padX * .6, by + boxH / 2 - 9 * scale, codeW, 18 * scale, 4 * scale);
+      ctx.fillStyle = st.color; ctx.fill();
+      ctx.fillStyle = "#0a0f10"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.font = `800 ${Math.max(8, 10 * scale)}px ${getFont()}`;
+      ctx.fillText(st.code, bx + padX * .6 + codeW / 2, by + boxH / 2 + 0.5 * scale);
+
+      ctx.textAlign = "left";
+      ctx.fillStyle = "#eaf2ef"; ctx.font = `700 ${fontMain}px ${getFont()}`;
+      ctx.fillText(label, bx + padX * .6 + codeW + 8 * scale, by + padY + fontMain * .5);
+      ctx.fillStyle = st.color; ctx.font = `700 ${Math.max(8, 10 * scale)}px ${getFont()}`;
+      ctx.fillText(distTxt, bx + padX * .6 + codeW + 8 * scale, by + boxH - padY * .8);
+      ctx.restore();
+      ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    }
+    function getFont() { return '"Arial Narrow", Arial, sans-serif'; }
+
+    function roundRect(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y);
+    }
+
+    /* ===================== DRONE — pseudo-3D chase cam ===================== */
+    function drawDrone(now) {
+      // Drone is rendered by the cc-engine iframe (3D chase) beneath this canvas.
+      const { w, h } = resizeCanvas(drone);
+      dctx.clearRect(0, 0, w, h);
+      return;
+      const ctx = getRouteContext(state.routeMile);
+      const veh = state.position;
+
+      const targetH = state.heading;
+      if (state.droneCamHeading == null) state.droneCamHeading = targetH;
+      else state.droneCamHeading += angleDiff(targetH, state.droneCamHeading) * (reduceMotion ? 1 : 0.06);
+      const camH = state.droneCamHeading;
+      const cosH = Math.cos(camH * Math.PI / 180), sinH = Math.sin(camH * Math.PI / 180);
+
+      const horizon = h * 0.30;
+      const sky = dctx.createLinearGradient(0, 0, 0, horizon);
+      sky.addColorStop(0, "#0e1a20"); sky.addColorStop(1, "#1b2d33");
+      dctx.fillStyle = sky; dctx.fillRect(0, 0, w, horizon);
+      const groundTone = { urban: "#1d2a2c", canyon: "#28281f", mountain: "#1f2a2c", valley: "#23291b", hills: "#1e2a26" }[ctx.terrain] || "#1e2729";
+      const grd = dctx.createLinearGradient(0, horizon, 0, h);
+      grd.addColorStop(0, "#16211f"); grd.addColorStop(1, groundTone);
+      dctx.fillStyle = grd; dctx.fillRect(0, horizon, w, h - horizon);
+
+      const focal = w * 0.95;
+      const camBack = 0.9, camUp = 1.25;
+      const project = (p) => {
+        const dEast = (p.lng - veh.lng) * 69 * Math.cos(veh.lat * Math.PI / 180);
+        const dNorth = (p.lat - veh.lat) * 69;
+        const fwd = dEast * sinH + dNorth * cosH;
+        const lat = dEast * cosH - dNorth * sinH;
+        const depth = fwd + camBack;
+        if (depth < 0.12) return null;
+        return { x: w * 0.5 + (lat / depth) * focal, y: horizon + (camUp / depth) * focal, depth, scale: focal / depth };
+      };
+
+      const fromMile = Math.max(0, state.routeMile - 1.2);
+      const toMile = Math.min(totalMiles, state.routeMile + 26);
+      const samples = [];
+      for (let m = fromMile; m <= toMile; m += 0.4) samples.push({ ...pointAtMile(m), mile: m });
+
+      const proj = samples.map(s => ({ s, q: project(s) })).filter(o => o.q);
+      if (proj.length > 1) {
+        const left = [], right = [];
+        for (const o of proj) {
+          const widthPx = Math.max(2, 0.055 * o.q.scale);
+          left.push({ x: o.q.x - widthPx, y: o.q.y });
+          right.push({ x: o.q.x + widthPx, y: o.q.y });
+        }
+        dctx.beginPath();
+        dctx.moveTo(left[0].x, left[0].y);
+        for (const p of left) dctx.lineTo(p.x, p.y);
+        for (let i = right.length - 1; i >= 0; i--) dctx.lineTo(right[i].x, right[i].y);
+        dctx.closePath();
+        dctx.fillStyle = "#2b2f31"; dctx.fill();
+
+        for (let i = 1; i < proj.length; i++) {
+          const a = proj[i - 1], b = proj[i];
+          dctx.strokeStyle = trafficColor(segmentTrafficScore((a.s.mile + b.s.mile) / 2));
+          dctx.lineWidth = Math.max(2, 0.05 * Math.min(a.q.scale, b.q.scale));
+          dctx.beginPath(); dctx.moveTo(a.q.x, a.q.y); dctx.lineTo(b.q.x, b.q.y); dctx.stroke();
+        }
+        dctx.strokeStyle = "rgba(216,209,184,.55)"; dctx.lineWidth = 1.5;
+        dctx.beginPath(); left.forEach((p, i) => i ? dctx.lineTo(p.x, p.y) : dctx.moveTo(p.x, p.y)); dctx.stroke();
+        dctx.beginPath(); right.forEach((p, i) => i ? dctx.lineTo(p.x, p.y) : dctx.moveTo(p.x, p.y)); dctx.stroke();
+      }
+
+      const pins = [];
+      for (const p of state.places) pins.push({ lat: p.lat, lng: p.lng, label: p.name, kind: p.category, dist: milesBetween(veh, p) });
+      for (const p of route) { if (p.mile > state.routeMile + 0.4 && p.mile < state.routeMile + 26) pins.push({ lat: p.lat, lng: p.lng, label: p.name.split(" / ")[0], kind: "landmark", dist: p.mile - state.routeMile }); }
+      pins.sort((a, b) => b.dist - a.dist);
+      for (const pin of pins) {
+        const q = project(pin);
+        if (!q || q.x < -60 || q.x > w + 60) continue;
+        const st = POI_STYLE[pin.kind] || POI_STYLE.landmark;
+        const r = Math.max(3, Math.min(9, q.scale * 0.012));
+        dctx.strokeStyle = "rgba(95,208,230,.5)"; dctx.lineWidth = 1.5;
+        dctx.beginPath(); dctx.moveTo(q.x, q.y); dctx.lineTo(q.x, q.y - r * 4); dctx.stroke();
+        dctx.fillStyle = st.color; dctx.beginPath(); dctx.arc(q.x, q.y - r * 4, r, 0, Math.PI * 2); dctx.fill();
+        dctx.strokeStyle = "rgba(0,0,0,.45)"; dctx.lineWidth = 1; dctx.stroke();
+        if (q.depth < 12) {
+          const tx = q.x + r + 5, ty = q.y - r * 4;
+          dctx.font = `700 ${Math.max(10, Math.min(15, q.scale * .02))}px ${getFont()}`;
+          const label = `${pin.label}`;
+          const tw = dctx.measureText(label).width;
+          dctx.fillStyle = "rgba(10,15,16,.7)"; roundRect(dctx, tx - 4, ty - 11, tw + 8, 18, 4); dctx.fill();
+          dctx.fillStyle = "#eaf2ef"; dctx.textBaseline = "middle"; dctx.fillText(label, tx, ty);
+          dctx.textBaseline = "alphabetic";
+        }
+      }
+
+      const carX = w * 0.5, carY = h * 0.82;
+      const glow = dctx.createRadialGradient(carX, carY, 2, carX, carY, 40);
+      glow.addColorStop(0, "rgba(52,199,123,.55)"); glow.addColorStop(1, "rgba(52,199,123,0)");
+      dctx.fillStyle = glow; dctx.beginPath(); dctx.arc(carX, carY, 40, 0, Math.PI * 2); dctx.fill();
+      dctx.save(); dctx.translate(carX, carY);
+      dctx.fillStyle = "#eafff4"; dctx.strokeStyle = "#0a0f10"; dctx.lineWidth = 2;
+      dctx.beginPath(); dctx.moveTo(0, -16); dctx.lineTo(9, 12); dctx.lineTo(0, 6); dctx.lineTo(-9, 12); dctx.closePath();
+      dctx.fill(); dctx.stroke(); dctx.restore();
+      if (!reduceMotion) {
+        dctx.strokeStyle = "rgba(95,208,230,.5)"; dctx.lineWidth = 2;
+        dctx.beginPath(); dctx.arc(carX, carY, 26 + Math.sin(now / 420) * 4, 0, Math.PI * 2); dctx.stroke();
+      }
+
+      dctx.fillStyle = "rgba(8,12,13,.6)"; dctx.fillRect(0, h - 30, w, 30);
+      dctx.fillStyle = "#9fb3aa"; dctx.font = `12px ${getFont()}`;
+      dctx.fillText(`ALT 1,200 ft   BRG ${Math.round(camH)}°   ${ctx.section}   next ${pins.length ? Math.round(pins[pins.length - 1].dist) : "--"} mi   sample ${state.lastLiveTime ? timeAgo(state.lastLiveTime) : "sim"}`, 14, h - 11);
+    }
+
+    /* ===================== OVERHEAD — ops map ===================== */
+    function drawOverheadMap() {
+      // Overhead is rendered by the cc-engine Leaflet iframe (or the Google traffic surface).
+      const { w, h } = resizeCanvas(map);
+      mctx.clearRect(0, 0, w, h);
+      return;
+      mctx.fillStyle = "#0c1416"; mctx.fillRect(0, 0, w, h);
+
+      const minLat = Math.min(...route.map(p => p.lat)) - .18, maxLat = Math.max(...route.map(p => p.lat)) + .18;
+      const minLng = Math.min(...route.map(p => p.lng)) - .18, maxLng = Math.max(...route.map(p => p.lng)) + .18;
+      const pad = Math.min(w, h) * .08;
+      const screenGeo = (p) => ({
+        x: pad + ((p.lng - minLng) / (maxLng - minLng)) * (w - pad * 2),
+        y: h - pad - ((p.lat - minLat) / (maxLat - minLat)) * (h - pad * 2)
+      });
+
+      mctx.fillStyle = "rgba(40,80,70,.10)"; mctx.fillRect(0, 0, w, h * .30);
+      mctx.fillStyle = "rgba(90,80,40,.10)"; mctx.fillRect(0, h * .55, w, h * .45);
+      mctx.strokeStyle = "rgba(120,140,140,.06)"; mctx.lineWidth = 1;
+      for (let x = pad; x < w - pad; x += (w - pad * 2) / 8) { mctx.beginPath(); mctx.moveTo(x, pad); mctx.lineTo(x, h - pad); mctx.stroke(); }
+      for (let y = pad; y < h - pad; y += (h - pad * 2) / 6) { mctx.beginPath(); mctx.moveTo(pad, y); mctx.lineTo(w - pad, y); mctx.stroke(); }
+
+      mctx.lineCap = "round"; mctx.lineJoin = "round";
+      mctx.strokeStyle = "#0a0f10"; mctx.lineWidth = Math.max(10, Math.min(w, h) * .026);
+      mctx.beginPath(); route.forEach((p, i) => { const s = screenGeo(p); i ? mctx.lineTo(s.x, s.y) : mctx.moveTo(s.x, s.y); }); mctx.stroke();
+
+      mctx.lineWidth = Math.max(5, Math.min(w, h) * .014);
+      for (let i = 0; i < route.length - 1; i++) {
+        const a = screenGeo(route[i]), b = screenGeo(route[i + 1]);
+        mctx.strokeStyle = trafficColor(segmentTrafficScore((route[i].mile + route[i + 1].mile) / 2));
+        mctx.beginPath(); mctx.moveTo(a.x, a.y); mctx.lineTo(b.x, b.y); mctx.stroke();
+      }
+
+      const current = interpolateRoute(state.progress);
+      const done = [];
+      for (const p of route) { done.push(p); if (p.mile > state.routeMile) break; }
+      done[done.length - 1] = current;
+      mctx.strokeStyle = "#34c77b"; mctx.lineWidth = Math.max(3, Math.min(w, h) * .008);
+      mctx.beginPath(); done.forEach((p, i) => { const s = screenGeo(p); i ? mctx.lineTo(s.x, s.y) : mctx.moveTo(s.x, s.y); }); mctx.stroke();
+
+      route.forEach(p => {
+        const s = screenGeo(p);
+        mctx.fillStyle = p.mile <= state.routeMile ? "#34c77b" : p.kind === "landmark" ? "#f2b134" : "#5fd0e6";
+        mctx.beginPath(); mctx.arc(s.x, s.y, p.kind === "landmark" ? 4.5 : 3.5, 0, Math.PI * 2); mctx.fill();
+        if (p.kind !== "city" || ["Irvine", "Los Angeles", "Tracy", "Oakland", "Alameda"].some(n => p.name.includes(n))) {
+          mctx.fillStyle = "#c4d2cc"; mctx.font = `${Math.max(10, Math.min(w, h) * .021)}px ${getFont()}`;
+          mctx.fillText(p.name, s.x + 7, s.y - 6);
+        }
+      });
+
+      if (!document.body.classList.contains("hide-intel")) {
+        [
+          { label: "Tejon Pass / Five Mile Grade", at: "Grapevine / Tejon Pass" },
+          { label: "Route 99 splits to Bakersfield", at: "Wheeler Ridge" },
+          { label: "West Side Freeway", at: "Coalinga" },
+          { label: "SR 152 / San Luis Reservoir", at: "Santa Nella / SR 152" },
+          { label: "Leave I-5 → I-580 to Alameda", at: "I-580 Split" }
+        ].forEach(c => {
+          const p = route.find(item => item.name === c.at); if (!p) return;
+          const s = screenGeo(p);
+          const labelW = Math.min(w * .46, Math.max(150, c.label.length * 6.7));
+          mctx.fillStyle = "rgba(18,27,30,.9)"; roundRect(mctx, Math.min(s.x + 10, w - labelW - 8), s.y + 8, labelW, 22, 5); mctx.fill();
+          mctx.fillStyle = "#cfe6dd"; mctx.font = `11px ${getFont()}`;
+          mctx.fillText(c.label, Math.min(s.x + 18, w - labelW), s.y + 23, labelW - 12);
+        });
+      }
+
+      if (!document.body.classList.contains("hide-stops")) {
+        for (const p of state.places.slice(0, 8)) {
+          const s = screenGeo({ lat: p.lat, lng: p.lng });
+          const st = POI_STYLE[p.category] || POI_STYLE.landmark;
+          mctx.fillStyle = st.color; mctx.fillRect(s.x - 3, s.y - 3, 6, 6);
+        }
+      }
+
+      const car = screenGeo(current);
+      mctx.fillStyle = "#fff"; mctx.strokeStyle = "#0a0f10"; mctx.lineWidth = 2;
+      mctx.beginPath(); mctx.arc(car.x, car.y, 7, 0, Math.PI * 2); mctx.fill(); mctx.stroke();
+      mctx.fillStyle = "#e2483f"; mctx.beginPath(); mctx.arc(car.x, car.y, 3.5, 0, Math.PI * 2); mctx.fill();
+    }
+
+    /* ===================== Google traffic map ===================== */
+    function routeLatLngs() { return route.map(p => ({ lat: p.lat, lng: p.lng })); }
+
+    function frameGoogleToSection() {
+      if (!state.googleMap || !window.google) return;
+      const prev = [...route].reverse().find(p => p.mile <= state.routeMile) || route[0];
+      const next = nextLandmark();
+      const bounds = new google.maps.LatLngBounds();
+      bounds.extend({ lat: state.position.lat, lng: state.position.lng });
+      bounds.extend({ lat: prev.lat, lng: prev.lng });
+      bounds.extend({ lat: next.lat, lng: next.lng });
+      state.googleMap.fitBounds(bounds, 64);
+    }
+    function updateGoogleTrafficMap() {
+      if (!state.googleTrafficReady || !state.googleMap || !window.google) return;
+      const pos = { lat: state.position.lat, lng: state.position.lng };
+      if (state.googleMarker) state.googleMarker.setPosition(pos);
+      else state.googleMarker = new google.maps.Marker({ position: pos, map: state.googleMap, title: "Live Glympse position" });
+    }
+
+    function setMapSurface(text) { els.mapReadout.textContent = text; }
+
+    async function enableGoogleTrafficLayer() {
+      const config = await fetchBrowserConfig();
+      const key = config.mapsBrowserKey || "";
+      if (!key) {
+        setMapSurface("No Maps key — simulator route traffic only");
+        els.layerTraffic.classList.remove("on");
+        state.trafficLayerWanted = false;
+        log("Google TrafficLayer needs GOOGLE_MAPS_BROWSER_KEY from /api/browser-config.");
+        showGoogleSurface(false);
+        return;
+      }
+      if (state.googleTrafficReady) { showGoogleSurface(true); frameGoogleToSection(); updateGoogleTrafficMap(); return; }
+      if (state.googleTrafficLoading) return;
+      state.googleTrafficLoading = true;
+      setMapSurface("Loading Google TrafficLayer…");
+
+      window.__initCalcupTraffic = () => {
+        state.googleMap = new google.maps.Map(els.googleTrafficMap, {
+          center: { lat: state.position.lat, lng: state.position.lng },
+          zoom: 10, mapTypeId: "roadmap", disableDefaultUI: true, zoomControl: true,
+          gestureHandling: "greedy", backgroundColor: "#0b1112"
+        });
+        new google.maps.TrafficLayer({ autoRefresh: true }).setMap(state.googleMap);
+        state.googleRouteLine = new google.maps.Polyline({
+          path: routeLatLngs(), strokeColor: "#34c77b", strokeOpacity: .9, strokeWeight: 4, map: state.googleMap
+        });
+        state.googleTrafficReady = true;
+        state.googleTrafficLoading = false;
+        showGoogleSurface(true);
+        frameGoogleToSection();
+        updateGoogleTrafficMap();
+        setMapSurface("Google TrafficLayer · live");
+        log("Google TrafficLayer enabled.");
+      };
+
+      if (window.google && window.google.maps) { window.__initCalcupTraffic(); return; }
+      const existing = document.getElementById("googleMapsApiScript");
+      if (existing) { setMapSurface("Google Maps script already loading…"); return; }
+      const script = document.createElement("script");
+      script.id = "googleMapsApiScript"; script.async = true; script.defer = true;
+      script.onerror = () => {
+        state.googleTrafficLoading = false;
+        setMapSurface("Maps script failed — check key, billing, Maps JS API");
+        els.layerTraffic.classList.remove("on");
+        state.trafficLayerWanted = false;
+        showGoogleSurface(false);
+        log("Google Maps TrafficLayer script failed to load.");
+      };
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&callback=__initCalcupTraffic`;
+      document.head.appendChild(script);
+    }
+
+    // one map surface at a time: google layer only shows in overhead when traffic on + ready
+    function showGoogleSurface(on) {
+      const visible = on && state.view === "overhead";
+      els.googleTrafficMap.classList.toggle("show", visible);
+      if (visible && state.googleMap && window.google) { google.maps.event.trigger(state.googleMap, "resize"); frameGoogleToSection(); }
+    }
+
+    /* ===================== View switching ===================== */
+    function setView(view) {
+      state.view = view;
+      document.getElementById("firstView").classList.toggle("active", view === "first");
+      document.getElementById("droneView").classList.toggle("active", view === "drone");
+      document.getElementById("overheadView").classList.toggle("active", view === "overhead");
+      document.querySelectorAll(".modeswitch button").forEach(b => b.classList.toggle("active", b.dataset.view === view));
+      els.layerTraffic.toggleAttribute("disabled", view === "first");
+      if (state.trafficLayerWanted && state.googleTrafficReady) showGoogleSurface(true);
+      else els.googleTrafficMap.classList.remove("show");
+      if (view === "overhead") setMapSurface((state.trafficLayerWanted && state.googleTrafficReady) ? "Google TrafficLayer · live" : "Route map");
+    }
+
+    /* ===================== Frame loop ===================== */
+    let lastFrame = performance.now();
+    function frame(now) {
+      const dt = Math.min(0.05, (now - lastFrame) / 1000);
+      lastFrame = now;
+
+      if (state.mode === "sim" && state.playing) {
+        state.simProgress = (state.simProgress + dt * 0.0035 * state.speedScale) % 1;
+        const pos = interpolateRoute(state.simProgress);
+        applyPosition(pos.lat, pos.lng, 70, pos.heading, "simulated");
+      }
+      if (state.mode === "live" && state.playing && Date.now() - state.lastLiveTime > 45000) {
+        const nudge = interpolateRoute(Math.min(1, state.progress + dt * 0.00045));
+        if (state.source !== "live") applyPosition(nudge.lat, nudge.lng, 62, nudge.heading, "fallback drift");
+      }
+
+      updateMetrics();
+
+      if (state.view === "first") drawFirst(now);
+      else if (state.view === "drone") drawDrone(now);
+      else drawOverheadMap();
+
+      requestAnimationFrame(frame);
+    }
+
+    /* ===================== Wire up ===================== */
+    document.getElementById("pollNow").addEventListener("click", livePoll);
+    document.getElementById("playPause").addEventListener("click", e => {
+      state.playing = !state.playing;
+      e.currentTarget.textContent = state.playing ? "Pause" : "Resume";
+    });
+    document.getElementById("modeLive").addEventListener("click", () => {
+      state.mode = "live";
+      document.getElementById("modeLive").classList.add("active");
+      document.getElementById("modeSim").classList.remove("active");
+      livePoll();
+    });
+    document.getElementById("modeSim").addEventListener("click", () => {
+      state.mode = "sim"; state.simProgress = state.progress;
+      document.getElementById("modeSim").classList.add("active");
+      document.getElementById("modeLive").classList.remove("active");
+      setLive("warn", "Local simulated drive mode");
+      log("Switched to local drive simulation.");
+    });
+    document.getElementById("applyManual").addEventListener("click", () => {
+      const lat = Number(document.getElementById("manualLat").value);
+      const lng = Number(document.getElementById("manualLng").value);
+      applyPosition(lat, lng, 62, null, "manual GPS");
+      log(`Manual GPS applied: ${lat.toFixed(5)}, ${lng.toFixed(5)}.`);
+    });
+    document.getElementById("enableGoogleTraffic")?.addEventListener("click", () => { state.trafficLayerWanted = true; els.layerTraffic.classList.add("on"); enableGoogleTrafficLayer(); });
+    document.getElementById("speedScale").addEventListener("input", e => { state.speedScale = Number(e.target.value); });
+
+    document.querySelectorAll(".modeswitch button").forEach(b => b.addEventListener("click", () => setView(b.dataset.view)));
+
+    // Size the hero to the largest 16:9 that fits the stage (letterboxed both ways).
+    function fitHero() {
+      const stageEl = document.querySelector(".stage");
+      const topEl = stageEl.querySelector(".stage-top");
+      const railEl = stageEl.querySelector(".ar-rail");
+      const vp = document.querySelector(".viewport");
+      const availW = stageEl.clientWidth;
+      const availH = stageEl.clientHeight - topEl.offsetHeight - railEl.offsetHeight;
+      if (availW <= 0 || availH <= 0) return;
+      let w = availW, h = w * 9 / 16;
+      if (h > availH) { h = availH; w = h * 16 / 9; }
+      vp.style.width = Math.floor(w) + "px";
+      vp.style.height = Math.floor(h) + "px";
+    }
+    window.addEventListener("resize", fitHero);
+
+    // collapsible rails — hand the freed width to the 16:9 hero stage.
+    // Left starts collapsed (default), shown as a "❯ Controls" breadcrumb tab.
+    const toggleLeft = document.getElementById("toggleLeft");
+    const toggleRight = document.getElementById("toggleRight");
+    function setRail(side, collapsed) {
+      const btn = side === "left" ? toggleLeft : toggleRight;
+      document.body.classList.toggle("hide-" + side, collapsed);
+      btn.classList.toggle("collapsed", collapsed);
+      const ico = btn.querySelector(".rt-ico");
+      if (side === "left") ico.textContent = collapsed ? "❯" : "❮";
+      else ico.textContent = collapsed ? "❮" : "❯";
+      fitHero();
+    }
+    toggleLeft.addEventListener("click", () => setRail("left", !document.body.classList.contains("hide-left")));
+    toggleRight.addEventListener("click", () => setRail("right", !document.body.classList.contains("hide-right")));
+
+    els.layerTraffic.addEventListener("click", () => {
+      if (els.layerTraffic.hasAttribute("disabled")) return;
+      const on = !els.layerTraffic.classList.contains("on");
+      els.layerTraffic.classList.toggle("on", on);
+      state.trafficLayerWanted = on;
+      if (on) enableGoogleTrafficLayer();
+      else { showGoogleSurface(false); setMapSurface("Route map"); }
+    });
+    function toggleBodyLayer(id, cls) {
+      const btn = document.getElementById(id);
+      btn.addEventListener("click", () => {
+        const on = !btn.classList.contains("on");
+        btn.classList.toggle("on", on);
+        document.body.classList.toggle(cls, !on);
+      });
+    }
+    toggleBodyLayer("layerStops", "hide-stops");
+    toggleBodyLayer("layerIntel", "hide-intel");
+
+    if (!CanvasRenderingContext2D.prototype.roundRect) {
+      CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h, r) { roundRect(this, x, y, w, h, r); return this; };
+    }
+
+    log("Simulator loaded.");
+    setView("first");
+    buildJourneyRail();
+    fitHero();
+    requestAnimationFrame(fitHero);
+    applyPosition(state.position.lat, state.position.lng, 62, null, "startup");
+    livePoll();
+    setInterval(() => { if (state.mode === "live") livePoll(); }, 30000);
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>

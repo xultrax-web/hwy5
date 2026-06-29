@@ -1,0 +1,1191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>I-5 AI Highway Analysis Console</title>
+    <style>
+        :root {
+            --bg-color: #080b16;
+            --panel-bg: rgba(17, 22, 43, 0.75);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --text-main: #f0f3f8;
+            --text-muted: #8b9bb4;
+            --color-primary: #00e5ff;
+            --color-success: #00e676;
+            --color-warning: #ffea00;
+            --color-danger: #ff1744;
+            --font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: var(--font-family);
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(0, 229, 255, 0.1) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(255, 23, 68, 0.05) 0px, transparent 50%);
+        }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 30px;
+            background: rgba(8, 11, 22, 0.85);
+            border-bottom: 1px solid var(--border-color);
+            backdrop-filter: blur(10px);
+            z-index: 10;
+        }
+
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .pulse-dot {
+            width: 10px;
+            height: 10px;
+            background-color: var(--color-success);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--color-success);
+            animation: pulse 1.8s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.9); opacity: 0.6; }
+            50% { transform: scale(1.1); opacity: 1; box-shadow: 0 0 15px var(--color-success); }
+            100% { transform: scale(0.9); opacity: 0.6; }
+        }
+
+        h1 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            background: linear-gradient(90deg, #fff, var(--text-muted));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .system-time {
+            font-family: monospace;
+            font-size: 0.9rem;
+            color: var(--color-primary);
+            background: rgba(0, 229, 255, 0.1);
+            padding: 4px 10px;
+            border-radius: 4px;
+            border: 1px solid rgba(0, 229, 255, 0.2);
+        }
+
+        /* Main Console Layout */
+        .console-container {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 280px 1fr 340px;
+            gap: 20px;
+            padding: 20px;
+            height: calc(100vh - 65px);
+            overflow: hidden;
+        }
+
+        /* Panel Common Styles */
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            backdrop-filter: blur(15px);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .panel-header {
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 0.85rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            letter-spacing: 1px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel-body {
+            flex: 1;
+            padding: 18px;
+            overflow-y: auto;
+        }
+
+        /* LEFT PANEL: Map & Segments */
+        .checkpoint-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .checkpoint-btn {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            padding: 12px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: left;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .checkpoint-btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: translateX(4px);
+        }
+
+        .checkpoint-btn.active {
+            background: rgba(0, 229, 255, 0.1);
+            border-color: var(--color-primary);
+            box-shadow: 0 0 15px rgba(0, 229, 255, 0.15);
+        }
+
+        .checkpoint-btn .marker-id {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-main);
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            font-family: monospace;
+        }
+
+        .checkpoint-btn.active .marker-id {
+            background: var(--color-primary);
+            color: #000;
+        }
+
+        .checkpoint-btn .btn-details {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .checkpoint-btn .btn-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .checkpoint-btn .btn-subtitle {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 2px;
+            font-family: monospace;
+        }
+
+        /* Route Map (SVG) container */
+        .map-container {
+            width: 100%;
+            height: 200px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .route-svg {
+            width: 90%;
+            height: 90%;
+        }
+
+        /* MIDDLE PANEL: Visualizer & Canvas */
+        .visualizer-container {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .feed-wrapper {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16/9;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+            box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.8);
+        }
+
+        #highway-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* Overlay text in video */
+        .feed-overlay {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            background: rgba(0, 0, 0, 0.75);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.75rem;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .overlay-indicator {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: var(--color-danger);
+            color: #fff;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            animation: blink 1s infinite alternate;
+            display: none;
+        }
+
+        @keyframes blink {
+            0% { opacity: 0.4; }
+            100% { opacity: 1; }
+        }
+
+        /* AI Mode Selectors */
+        .controls-row {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            padding: 15px;
+            border-radius: 8px;
+        }
+
+        .mode-selector {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 8px;
+        }
+
+        .mode-btn {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-color);
+            color: var(--text-muted);
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+
+        .mode-btn:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-main);
+        }
+
+        .mode-btn.active {
+            background: var(--color-primary);
+            color: #000;
+            border-color: var(--color-primary);
+            box-shadow: 0 0 10px rgba(0, 229, 255, 0.2);
+        }
+
+        /* Slider Controls */
+        .sliders-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-muted);
+        }
+
+        .slider-header span:last-child {
+            color: var(--color-primary);
+            font-family: monospace;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--color-primary);
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        /* RIGHT PANEL: Telemetry Dashboard */
+        .telemetry-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .telemetry-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px 15px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 80px;
+        }
+
+        .tel-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            letter-spacing: 0.5px;
+        }
+
+        .tel-value {
+            font-size: 1.4rem;
+            font-weight: 700;
+            font-family: monospace;
+            color: var(--text-main);
+            margin-top: 4px;
+            display: flex;
+            align-items: baseline;
+            gap: 4px;
+        }
+
+        .tel-value span {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-weight: 400;
+        }
+
+        .tel-value.danger { color: var(--color-danger); }
+        .tel-value.warning { color: var(--color-warning); }
+        .tel-value.success { color: var(--color-success); }
+
+        /* Pipeline logs */
+        .pipeline-logs {
+            background: #04060b;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 0.75rem;
+            padding: 12px;
+            height: 180px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            color: #a4b3c6;
+            scroll-behavior: smooth;
+        }
+
+        .log-entry {
+            line-height: 1.3;
+        }
+
+        .log-entry .timestamp {
+            color: var(--color-primary);
+            margin-right: 6px;
+        }
+
+        .log-entry.success { color: var(--color-success); }
+        .log-entry.warning { color: var(--color-warning); }
+        .log-entry.danger { color: var(--color-danger); }
+
+        /* Setup / Config section */
+        .config-section {
+            border-top: 1px solid var(--border-color);
+            padding-top: 15px;
+            margin-top: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .config-title {
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+
+        .btn-action {
+            background: rgba(0, 229, 255, 0.1);
+            border: 1px solid var(--color-primary);
+            color: var(--color-primary);
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+
+        .btn-action:hover {
+            background: var(--color-primary);
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header Banner -->
+    <header>
+        <div class="logo-container">
+            <div class="pulse-dot"></div>
+            <h1>I-5 AI Highway Analysis Console</h1>
+        </div>
+        <div style="display: flex; gap: 15px; align-items: center;">
+            <span style="font-size: 0.8rem; color: var(--text-muted);">DISTRICT FEED CORRIDOR: LA <> BAY AREA</span>
+            <div class="system-time" id="sys-time">09:14:09</div>
+        </div>
+    </header>
+
+    <!-- Console Container -->
+    <div class="console-container">
+
+        <!-- LEFT COLUMN: Route Map & Segments -->
+        <div class="panel">
+            <div class="panel-header">
+                <span>Route Navigator</span>
+                <span style="color: var(--color-primary); font-size: 0.7rem; font-family: monospace;">I-5 SOUTH-TO-NORTH</span>
+            </div>
+            <div class="panel-body" style="display: flex; flex-direction: column; gap: 15px;">
+                <!-- Map -->
+                <div class="map-container">
+                    <svg class="route-svg" viewBox="0 0 100 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <!-- Route Line -->
+                        <path d="M 50 180 Q 30 140 35 110 T 65 50 T 40 20" stroke="rgba(255, 255, 255, 0.15)" stroke-width="6" stroke-linecap="round"/>
+                        <path id="route-highlight" d="M 50 180 Q 30 140 35 110 T 65 50 T 40 20" stroke="url(#route-grad)" stroke-width="4" stroke-linecap="round"/>
+                        
+                        <!-- Gradients -->
+                        <defs>
+                            <linearGradient id="route-grad" x1="0%" y1="100%" x2="0%" y2="0%">
+                                <stop offset="0%" stop-color="#ff1744" />
+                                <stop offset="50%" stop-color="#ffea00" />
+                                <stop offset="100%" stop-color="#00e676" />
+                            </linearGradient>
+                        </defs>
+
+                        <!-- Waypoints -->
+                        <!-- 1. Castaic -->
+                        <circle cx="50" cy="180" r="5" fill="#ff1744" id="map-wp-1" class="map-dot"/>
+                        <!-- 2. Grapevine -->
+                        <circle cx="41" cy="150" r="5" fill="#ff5252" id="map-wp-2" class="map-dot"/>
+                        <!-- 3. Bakersfield -->
+                        <circle cx="34" cy="120" r="5" fill="#ffea00" id="map-wp-3" class="map-dot"/>
+                        <!-- 4. Kettleman City -->
+                        <circle cx="43" cy="90" r="5" fill="#00e5ff" id="map-wp-4" class="map-dot"/>
+                        <!-- 5. Coalinga -->
+                        <circle cx="58" cy="62" r="5" fill="#00e676" id="map-wp-5" class="map-dot"/>
+                        <!-- 6. Santa Nella -->
+                        <circle cx="40" cy="20" r="5" fill="#00e676" id="map-wp-6" class="map-dot"/>
+                    </svg>
+                </div>
+
+                <!-- List of Checkpoints -->
+                <div class="checkpoint-list">
+                    <button class="checkpoint-btn active" onclick="selectCheckpoint(1)">
+                        <span class="marker-id">01</span>
+                        <div class="btn-details">
+                            <span class="btn-title">Castaic</span>
+                            <span class="btn-subtitle">Postmile LA-R56.1</span>
+                        </div>
+                    </button>
+                    <button class="checkpoint-btn" onclick="selectCheckpoint(2)">
+                        <span class="marker-id">02</span>
+                        <div class="btn-details">
+                            <span class="btn-title">Grapevine Summit</span>
+                            <span class="btn-subtitle">Postmile LA-88.0</span>
+                        </div>
+                    </button>
+                    <button class="checkpoint-btn" onclick="selectCheckpoint(3)">
+                        <span class="marker-id">03</span>
+                        <div class="btn-details">
+                            <span class="btn-title">Bakersfield (Stockdale)</span>
+                            <span class="btn-subtitle">Postmile KER-48.7</span>
+                        </div>
+                    </button>
+                    <button class="checkpoint-btn" onclick="selectCheckpoint(4)">
+                        <span class="marker-id">04</span>
+                        <div class="btn-details">
+                            <span class="btn-title">Kettleman City</span>
+                            <span class="btn-subtitle">Postmile KIN-18.0</span>
+                        </div>
+                    </button>
+                    <button class="checkpoint-btn" onclick="selectCheckpoint(5)">
+                        <span class="marker-id">05</span>
+                        <div class="btn-details">
+                            <span class="btn-title">Coalinga / Harris Ranch</span>
+                            <span class="btn-subtitle">Postmile FRE-19.3</span>
+                        </div>
+                    </button>
+                    <button class="checkpoint-btn" onclick="selectCheckpoint(6)">
+                        <span class="marker-id">06</span>
+                        <div class="btn-details">
+                            <span class="btn-title">Santa Nella</span>
+                            <span class="btn-subtitle">Postmile MER-20.2</span>
+                        </div>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MIDDLE COLUMN: Visualizer Video Feed -->
+        <div class="panel" style="grid-column: 2 / 3;">
+            <div class="panel-header">
+                <span id="active-feed-title">Live Highway Stream - Castaic (LA-R56.1)</span>
+                <span style="color: var(--color-primary); font-size: 0.75rem; font-family: monospace;" id="active-coordinates">34.4904° N, 118.6180° W</span>
+            </div>
+            <div class="panel-body visualizer-container">
+                <!-- Video / Canvas Container -->
+                <div class="feed-wrapper">
+                    <canvas id="highway-canvas"></canvas>
+                    
+                    <div class="feed-overlay">
+                        <span>CHANNEL: Caltrans CCTV_NB_05_R56.1</span>
+                        <span id="overlay-latency">LATENCY: 1.2s</span>
+                        <span id="overlay-postmile">POSTMILE: LA R56.1</span>
+                    </div>
+
+                    <div class="overlay-indicator" id="warning-badge">FOG WARNING</div>
+                </div>
+
+                <!-- Controls & Adjustments -->
+                <div class="controls-row">
+                    <!-- Modes -->
+                    <div class="mode-selector">
+                        <button class="mode-btn active" onclick="setMode('raw')">Raw Feed</button>
+                        <button class="mode-btn" onclick="setMode('yolo')">YOLO Track</button>
+                        <button class="mode-btn" onclick="setMode('lane')">Lanes</button>
+                        <button class="mode-btn" onclick="setMode('fog')">Visibility</button>
+                        <button class="mode-btn" onclick="setMode('edges')">Sobel Edge</button>
+                    </div>
+
+                    <!-- Sliders -->
+                    <div class="sliders-grid">
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <span>TRAFFIC DENSITY</span>
+                                <span id="density-val">Medium</span>
+                            </div>
+                            <input type="range" id="density-slider" min="1" max="10" value="5" oninput="updateSliders()">
+                        </div>
+
+                        <div class="slider-group">
+                            <div class="slider-header">
+                                <span>SIMULATED FOG HAZE</span>
+                                <span id="fog-val">Clear</span>
+                            </div>
+                            <input type="range" id="fog-slider" min="0" max="10" value="0" oninput="updateSliders()">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT COLUMN: Telemetry Dashboard & Logs -->
+        <div class="panel">
+            <div class="panel-header">
+                <span>AI Telemetry & Outputs</span>
+                <span style="color: var(--color-success); font-size: 0.7rem; font-family: monospace;">ONLINE</span>
+            </div>
+            <div class="panel-body" style="display: flex; flex-direction: column; justify-content: space-between;">
+                <!-- Telemetry Cards -->
+                <div class="telemetry-grid">
+                    <div class="telemetry-card">
+                        <span class="tel-label">Avg Speed</span>
+                        <span class="tel-value" id="tel-speed">68 <span>mph</span></span>
+                    </div>
+                    <div class="telemetry-card">
+                        <span class="tel-label">Flow / Vol</span>
+                        <span class="tel-value" id="tel-flow">45 <span>vpm</span></span>
+                    </div>
+                    <div class="telemetry-card">
+                        <span class="tel-label">Truck Ratio</span>
+                        <span class="tel-value" id="tel-trucks">24 <span>%</span></span>
+                    </div>
+                    <div class="telemetry-card">
+                        <span class="tel-label">Visibility</span>
+                        <span class="tel-value success" id="tel-visibility">Clear</span>
+                    </div>
+                </div>
+
+                <!-- Logs Title -->
+                <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; font-family: monospace;">
+                    AI Processing Pipe Logs
+                </div>
+
+                <!-- Logs -->
+                <div class="pipeline-logs" id="log-console">
+                    <div class="log-entry"><span class="timestamp">[09:14:09]</span> System Initialized. Connecting to CWWP servers...</div>
+                    <div class="log-entry success"><span class="timestamp">[09:14:10]</span> Connection established with Caltrans Districts 7, 6, and 10.</div>
+                    <div class="log-entry"><span class="timestamp">[09:14:12]</span> CCTV stream ingest configured for LA R56.1 (Castaic).</div>
+                    <div class="log-entry success"><span class="timestamp">[09:14:13]</span> Frame parsing downsampled to 2 fps. Ingesting raw frames...</div>
+                </div>
+
+                <!-- Setup / Actions -->
+                <div class="config-section">
+                    <span class="config-title">Local Offline Script</span>
+                    <span style="font-size: 0.7rem; color: var(--text-muted); line-height: 1.3;">
+                        To run the actual frame analysis pipeline locally on a video file or image directory:
+                    </span>
+                    <button class="btn-action" onclick="copyCommand()">Copy Python Run Cmd</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Data Structure for Checkpoints
+        const checkpoints = {
+            1: {
+                name: "Castaic",
+                postmile: "LA R56.1",
+                coordinates: "34.4904° N, 118.6180° W",
+                avgSpeed: 68,
+                flow: 45,
+                truckRatio: 18,
+                baseTemp: 78,
+                rwisId: "LA-R56-NB",
+                district: 7
+            },
+            2: {
+                name: "Grapevine Summit",
+                postmile: "LA-88.0",
+                coordinates: "34.8150° N, 118.8950° W",
+                avgSpeed: 52,
+                flow: 38,
+                truckRatio: 28,
+                baseTemp: 64,
+                rwisId: "LA-TEJON-PASS",
+                district: 7
+            },
+            3: {
+                name: "Bakersfield (Stockdale)",
+                postmile: "KER-48.7",
+                coordinates: "35.3512° N, 119.3490° W",
+                avgSpeed: 74,
+                flow: 32,
+                truckRatio: 32,
+                baseTemp: 92,
+                rwisId: "KER-STOCKDALE",
+                district: 6
+            },
+            4: {
+                name: "Kettleman City",
+                postmile: "KIN-18.0",
+                coordinates: "36.0125° N, 119.9610° W",
+                avgSpeed: 75,
+                flow: 28,
+                truckRatio: 38,
+                baseTemp: 95,
+                rwisId: "KIN-41-JNC",
+                district: 6
+            },
+            5: {
+                name: "Coalinga / Harris Ranch",
+                postmile: "FRE-19.3",
+                coordinates: "36.2650° N, 120.3540° W",
+                avgSpeed: 73,
+                flow: 30,
+                truckRatio: 35,
+                baseTemp: 93,
+                rwisId: "FRE-COALINGA-NB",
+                district: 6
+            },
+            6: {
+                name: "Santa Nella",
+                postmile: "MER-20.2",
+                coordinates: "37.0980° N, 121.0180° W",
+                avgSpeed: 70,
+                flow: 42,
+                truckRatio: 26,
+                baseTemp: 84,
+                rwisId: "MER-SANTA-NELLA",
+                district: 10
+            }
+        };
+
+        let currentCp = 1;
+        let currentMode = 'raw';
+        let density = 5;
+        let fogLevel = 0;
+
+        // UI Updates
+        function selectCheckpoint(id) {
+            currentCp = id;
+            
+            // Update buttons
+            document.querySelectorAll('.checkpoint-btn').forEach((btn, idx) => {
+                if (idx === id - 1) btn.classList.add('active');
+                else btn.classList.remove('active');
+            });
+
+            // Update details
+            const cp = checkpoints[id];
+            document.getElementById('active-feed-title').innerText = `Live Highway Stream - ${cp.name} (${cp.postmile})`;
+            document.getElementById('active-coordinates').innerText = cp.coordinates;
+            document.getElementById('overlay-postmile').innerText = `POSTMILE: ${cp.postmile}`;
+            
+            // Reset fog slider when switching checkpoints (except if user sets it manually)
+            // But let's keep current settings
+            updateTelemetry();
+
+            addLog(`Active camera channel switched to ${cp.name} (${cp.postmile}). Loading telemetry...`, 'success');
+            addLog(`RWIS sensor query returned status: OK (Station: ${cp.rwisId}). Pavement Temp: ${cp.baseTemp}°F.`);
+        }
+
+        function setMode(mode) {
+            currentMode = mode;
+            document.querySelectorAll('.mode-btn').forEach((btn) => {
+                if (btn.innerText.toLowerCase().includes(mode.substring(0,3))) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+            addLog(`Rendering mode changed to: ${mode.toUpperCase()}`);
+        }
+
+        function updateSliders() {
+            density = parseInt(document.getElementById('density-slider').value);
+            fogLevel = parseInt(document.getElementById('fog-slider').value);
+
+            // Labels
+            let densityText = "Medium";
+            if (density <= 3) densityText = "Low";
+            else if (density >= 8) densityText = "Heavy Rush";
+            document.getElementById('density-val').innerText = densityText;
+
+            let fogText = "Clear";
+            if (fogLevel > 0 && fogLevel <= 3) fogText = "Light Mist";
+            else if (fogLevel > 3 && fogLevel <= 7) fogText = "Moderate Fog";
+            else if (fogLevel > 7) fogText = "Severe Tule Fog";
+            document.getElementById('fog-val').innerText = fogText;
+
+            updateTelemetry();
+        }
+
+        function updateTelemetry() {
+            const cp = checkpoints[currentCp];
+            
+            // Adjust telemetry based on sliders
+            let calculatedSpeed = cp.avgSpeed;
+            if (density > 5) calculatedSpeed -= (density - 5) * 4;
+            if (fogLevel > 2) calculatedSpeed -= (fogLevel - 2) * 5;
+            if (calculatedSpeed < 20) calculatedSpeed = 20;
+
+            let calculatedFlow = Math.round(cp.flow * (density / 5));
+
+            document.getElementById('tel-speed').innerHTML = `${calculatedSpeed} <span>mph</span>`;
+            document.getElementById('tel-flow').innerHTML = `${calculatedFlow} <span>vpm</span>`;
+            document.getElementById('tel-trucks').innerHTML = `${cp.truckRatio} <span>%</span>`;
+
+            const visEl = document.getElementById('tel-visibility');
+            const warningEl = document.getElementById('warning-badge');
+
+            if (fogLevel === 0) {
+                visEl.innerText = "Clear";
+                visEl.className = "tel-value success";
+                warningEl.style.display = 'none';
+            } else if (fogLevel <= 3) {
+                visEl.innerText = "5000 ft";
+                visEl.className = "tel-value success";
+                warningEl.style.display = 'none';
+            } else if (fogLevel <= 6) {
+                visEl.innerText = "1500 ft";
+                visEl.className = "tel-value warning";
+                warningEl.style.display = 'block';
+                warningEl.innerText = "MODERATE FOG";
+                warningEl.style.backgroundColor = "var(--color-warning)";
+                warningEl.style.color = "#000";
+            } else {
+                visEl.innerText = "< 200 ft";
+                visEl.className = "tel-value danger";
+                warningEl.style.display = 'block';
+                warningEl.innerText = "SEVERE TULE FOG";
+                warningEl.style.backgroundColor = "var(--color-danger)";
+                warningEl.style.color = "#fff";
+            }
+        }
+
+        // Log Console
+        const logConsole = document.getElementById('log-console');
+        function addLog(text, type = '') {
+            const timeStr = new Date().toLocaleTimeString([], { hour12: false });
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.innerHTML = `<span class="timestamp">[${timeStr}]</span> ${text}`;
+            logConsole.appendChild(entry);
+            logConsole.scrollTop = logConsole.scrollHeight;
+        }
+
+        function copyCommand() {
+            const cmd = "python analyze.py --input sample_frame.jpg --output-dir ./output";
+            navigator.clipboard.writeText(cmd).then(() => {
+                addLog("Copied command to clipboard: " + cmd, "success");
+                alert("Copied local run command to clipboard:\n" + cmd);
+            });
+        }
+
+        // Live Clock
+        setInterval(() => {
+            const timeStr = new Date().toLocaleTimeString([], { hour12: false });
+            document.getElementById('sys-time').innerText = timeStr;
+        }, 1000);
+
+        // --- CANVAS HIGHWAY DRAWING ENGINE ---
+        const canvas = document.getElementById('highway-canvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Simulated Vehicles
+        let vehicles = [];
+        class Vehicle {
+            constructor(lane, isTruck = false) {
+                this.lane = lane; // -1 = left lane, 1 = right lane
+                this.isTruck = isTruck;
+                this.z = 0; // Distance away from screen (0 = far away, 1 = close)
+                this.speed = 0.005 + Math.random() * 0.005;
+                this.xOffset = (lane === -1) ? -150 : 150;
+                this.width = isTruck ? 140 : 80;
+                this.height = isTruck ? 100 : 50;
+                this.color = isTruck ? '#e53935' : '#1e88e5';
+            }
+
+            update() {
+                this.z += this.speed;
+                if (this.z > 1.2) {
+                    // Reset vehicle
+                    this.z = 0;
+                    this.lane = Math.random() > 0.5 ? 1 : -1;
+                    this.isTruck = Math.random() * 100 < checkpoints[currentCp].truckRatio;
+                    this.width = this.isTruck ? 140 : 80;
+                    this.height = this.isTruck ? 100 : 50;
+                    this.xOffset = (this.lane === -1) ? -150 : 150;
+                }
+            }
+
+            draw(rawMode) {
+                // Project 3D coordinates to 2D screen
+                // Horizon center
+                const cx = canvas.width / 2;
+                const cy = canvas.height * 0.55;
+
+                // Simple perspective projection
+                const scale = this.z;
+                if (scale <= 0.05) return; // don't draw too far
+
+                const screenX = cx + (this.xOffset * scale);
+                const screenY = cy + ((canvas.height - cy) * scale);
+
+                const w = this.width * scale;
+                const h = this.height * scale;
+
+                // Draw Vehicle
+                if (rawMode) {
+                    ctx.fillStyle = this.color;
+                    ctx.fillRect(screenX - w/2, screenY - h, w, h);
+                    
+                    // Draw tires
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(screenX - w/2 + 2, screenY - 5, w * 0.2, 5);
+                    ctx.fillRect(screenX + w/2 - w*0.2 - 2, screenY - 5, w * 0.2, 5);
+
+                    // License/brake lights
+                    ctx.fillStyle = '#ff1744';
+                    ctx.fillRect(screenX - w/2 + 4, screenY - h + 4, w * 0.15, h * 0.1);
+                    ctx.fillRect(screenX + w/2 - w*0.15 - 4, screenY - h + 4, w * 0.15, h * 0.1);
+                } else if (currentMode === 'edges') {
+                    // Edge outline only
+                    ctx.strokeStyle = '#00e676';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(screenX - w/2, screenY - h, w, h);
+                }
+
+                // AI Overlays (YOLO Bounding Box)
+                if (currentMode === 'yolo') {
+                    ctx.strokeStyle = this.isTruck ? '#ff1744' : '#00e5ff';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(screenX - w/2 - 4, screenY - h - 4, w + 8, h + 8);
+
+                    // Text tag
+                    ctx.fillStyle = this.isTruck ? '#ff1744' : '#00e5ff';
+                    ctx.fillRect(screenX - w/2 - 4, screenY - h - 22, w + 8, 18);
+
+                    ctx.fillStyle = '#000';
+                    ctx.font = 'bold 9px monospace';
+                    ctx.fillText(this.isTruck ? 'TRUCK' : 'CAR', screenX - w/2, screenY - h - 10);
+                }
+            }
+        }
+
+        // Initialize vehicles based on density
+        function initVehicles() {
+            vehicles = [];
+            for (let i = 0; i < density; i++) {
+                const lane = Math.random() > 0.5 ? 1 : -1;
+                const isTruck = Math.random() * 100 < checkpoints[currentCp].truckRatio;
+                const v = new Vehicle(lane, isTruck);
+                v.z = Math.random(); // distribute along path
+                vehicles.push(v);
+            }
+        }
+        initVehicles();
+
+        // Detect density changes and adjust vehicles array length
+        setInterval(() => {
+            if (vehicles.length < density) {
+                const lane = Math.random() > 0.5 ? 1 : -1;
+                const isTruck = Math.random() * 100 < checkpoints[currentCp].truckRatio;
+                vehicles.push(new Vehicle(lane, isTruck));
+            } else if (vehicles.length > density) {
+                vehicles.pop();
+            }
+        }, 100);
+
+        // Ground perspective scrolling variables
+        let stripeOffset = 0;
+
+        function drawLoop() {
+            // Clear canvas
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const cx = canvas.width / 2;
+            const cy = canvas.height * 0.55;
+
+            // Background horizon gradient (Raw Feed)
+            const rawMode = (currentMode === 'raw' || currentMode === 'yolo' || currentMode === 'lane' || currentMode === 'fog');
+            
+            if (rawMode) {
+                // Sky
+                const skyGrad = ctx.createLinearGradient(0, 0, 0, cy);
+                skyGrad.addColorStop(0, '#0a0d1a');
+                skyGrad.addColorStop(1, '#1b203a');
+                ctx.fillStyle = skyGrad;
+                ctx.fillRect(0, 0, canvas.width, cy);
+
+                // Mountain range silhouette
+                ctx.fillStyle = '#0f1122';
+                ctx.beginPath();
+                ctx.moveTo(0, cy);
+                ctx.lineTo(cx - 200, cy - 30);
+                ctx.lineTo(cx - 100, cy - 10);
+                ctx.lineTo(cx, cy - 40);
+                ctx.lineTo(cx + 150, cy - 15);
+                ctx.lineTo(cx + 300, cy - 50);
+                ctx.lineTo(canvas.width, cy);
+                ctx.closePath();
+                ctx.fill();
+
+                // Ground (dirt shoulder)
+                ctx.fillStyle = '#1c1b18';
+                ctx.fillRect(0, cy, canvas.width, canvas.height - cy);
+
+                // Road surface
+                ctx.fillStyle = '#212229';
+                ctx.beginPath();
+                ctx.moveTo(cx - 20, cy);
+                ctx.lineTo(cx + 20, cy);
+                ctx.lineTo(cx + 400, canvas.height);
+                ctx.lineTo(cx - 400, canvas.height);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            // --- Lying Lanes ---
+            // Draw lane shoulders and line marks
+            stripeOffset = (stripeOffset + 3) % 40;
+
+            const drawLanes = (color, strokeWidth) => {
+                ctx.strokeStyle = color;
+                ctx.lineWidth = strokeWidth;
+
+                // Left shoulder
+                ctx.beginPath();
+                ctx.moveTo(cx - 15, cy);
+                ctx.lineTo(cx - 380, canvas.height);
+                ctx.stroke();
+
+                // Right shoulder
+                ctx.beginPath();
+                ctx.moveTo(cx + 15, cy);
+                ctx.lineTo(cx + 380, canvas.height);
+                ctx.stroke();
+
+                // Dotted center stripes
+                ctx.setLineDash([15, 25]);
+                ctx.lineDashOffset = -stripeOffset;
+                ctx.beginPath();
+                ctx.moveTo(cx, cy);
+                ctx.lineTo(cx, canvas.height);
+                ctx.stroke();
+                ctx.setLineDash([]); // reset
+            };
+
+            if (rawMode) {
+                drawLanes('#555', 2);
+            } else if (currentMode === 'edges') {
+                drawLanes('#00e676', 1);
+            }
+
+            // Lane Line Segmentation Visual Overlay
+            if (currentMode === 'lane') {
+                ctx.fillStyle = 'rgba(0, 230, 118, 0.2)';
+                ctx.beginPath();
+                ctx.moveTo(cx - 15, cy);
+                ctx.lineTo(cx + 15, cy);
+                ctx.lineTo(cx + 380, canvas.height);
+                ctx.lineTo(cx - 380, canvas.height);
+                ctx.closePath();
+                ctx.fill();
+
+                ctx.strokeStyle = '#00e676';
+                ctx.lineWidth = 4;
+                ctx.beginPath();
+                ctx.moveTo(cx - 15, cy);
+                ctx.lineTo(cx - 380, canvas.height);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(cx + 15, cy);
+                ctx.lineTo(cx + 380, canvas.height);
+                ctx.stroke();
+            }
+
+            // Update & Draw Vehicles
+            vehicles.forEach(v => {
+                v.update();
+                v.draw(rawMode);
+            });
+
+            // Simulated Fog/Visibility Mode Overlay
+            if (currentMode === 'fog' || fogLevel > 0) {
+                let maxOpacity = (fogLevel / 10) * 0.88;
+                // If visibility mode, force a light haze even if fogLevel is 0
+                if (currentMode === 'fog' && maxOpacity === 0) maxOpacity = 0.3;
+
+                // Fog gradient (denser at the horizon)
+                const fogGrad = ctx.createLinearGradient(0, cy - 20, 0, canvas.height);
+                fogGrad.addColorStop(0, `rgba(220, 225, 235, ${maxOpacity})`);
+                fogGrad.addColorStop(0.3, `rgba(200, 205, 215, ${maxOpacity * 0.8})`);
+                fogGrad.addColorStop(1, `rgba(180, 185, 195, ${maxOpacity * 0.4})`);
+                
+                ctx.fillStyle = fogGrad;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                if (currentMode === 'fog') {
+                    // Draw Visibility distance rings
+                    ctx.strokeStyle = 'rgba(255, 234, 0, 0.4)';
+                    ctx.lineWidth = 1;
+                    for (let zVal = 0.2; zVal <= 1.0; zVal += 0.2) {
+                        const sY = cy + ((canvas.height - cy) * zVal);
+                        ctx.beginPath();
+                        ctx.moveTo(cx - 300 * zVal, sY);
+                        ctx.lineTo(cx + 300 * zVal, sY);
+                        ctx.stroke();
+
+                        ctx.fillStyle = 'rgba(255, 234, 0, 0.7)';
+                        ctx.font = '8px monospace';
+                        let feet = Math.round((1.2 - zVal) * 1000) + ' ft';
+                        if (fogLevel > 6) feet = Math.round((1.2 - zVal) * 150) + ' ft';
+                        ctx.fillText(feet, cx + 300 * zVal + 5, sY);
+                    }
+                }
+            }
+
+            // Sobel Edge Filter Overlay (adds green matrix text overlay)
+            if (currentMode === 'edges') {
+                ctx.fillStyle = 'rgba(0, 230, 118, 0.1)';
+                ctx.font = '7px monospace';
+                for (let y = 10; y < canvas.height; y += 12) {
+                    for (let x = 10; x < canvas.width; x += 30) {
+                        if (Math.random() > 0.98) {
+                            ctx.fillText("0x" + Math.floor(Math.random()*16).toString(16).toUpperCase(), x, y);
+                        }
+                    }
+                }
+            }
+
+            requestAnimationFrame(drawLoop);
+        }
+
+        // Start draw loop
+        drawLoop();
+
+        // Initial setup
+        updateTelemetry();
+        updateSliders();
+    </script>
+</body>
+</html>

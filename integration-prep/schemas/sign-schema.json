@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://calcup26.local/schemas/sign-schema.json",
+  "title": "CALCUP26 Highway Sign Asset",
+  "type": "object",
+  "required": ["signId", "type", "background", "text"],
+  "properties": {
+    "signId": { "type": "string" },
+    "type": {
+      "type": "string",
+      "enum": ["guide", "exit-plaque", "distance", "warning", "cms", "route-shield"]
+    },
+    "standard": {
+      "type": "string",
+      "examples": ["MUTCD", "FHWA Standard Highway Signs", "Caltrans"]
+    },
+    "sourceUrl": { "type": "string" },
+    "licenseNote": { "type": "string" },
+    "background": {
+      "type": "string",
+      "enum": ["green", "blue", "brown", "yellow", "black", "white"]
+    },
+    "text": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["value", "role"],
+        "properties": {
+          "value": { "type": "string" },
+          "role": {
+            "type": "string",
+            "enum": ["destination", "distance", "exit-number", "route", "instruction", "cms-line"]
+          },
+          "font": {
+            "type": "string",
+            "examples": ["Roadgeek", "Overpass", "FHWA Series"]
+          },
+          "size": { "type": "number" }
+        }
+      }
+    },
+    "layout": {
+      "type": "object",
+      "properties": {
+        "hasArrow": { "type": "boolean", "default": false },
+        "hasShield": { "type": "boolean", "default": false },
+        "borderRadius": { "type": "number" },
+        "mounting": {
+          "type": "string",
+          "enum": ["hud", "roadside-post", "overhead-gantry", "none"]
+        }
+      }
+    }
+  }
+}

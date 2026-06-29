@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://calcup26.local/schemas/ar-overlay-schema.json",
+  "title": "CALCUP26 AR Overlay Contract",
+  "type": "object",
+  "required": ["overlayId", "mode", "kind", "anchor"],
+  "properties": {
+    "overlayId": { "type": "string" },
+    "mode": {
+      "type": "string",
+      "enum": ["first-person", "drone", "overhead", "all"]
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["landmark", "lane", "traffic", "weather", "air-quality", "hazard", "poi", "sign", "camera", "cms", "debug"]
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10
+    },
+    "anchor": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["screen", "world-latlng", "route-mile", "vehicle-relative", "lane-relative"]
+        },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "routeMile": { "type": "number" },
+        "x": { "type": "number" },
+        "y": { "type": "number" },
+        "z": { "type": "number" }
+      }
+    },
+    "visibleWhen": {
+      "type": "object",
+      "properties": {
+        "distanceMilesMax": { "type": "number" },
+        "speedMphMin": { "type": "number" },
+        "requiresLayer": { "type": "string" }
+      }
+    },
+    "payload": {
+      "type": "object"
+    }
+  }
+}
