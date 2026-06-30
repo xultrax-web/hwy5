@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { state } from "../engine/store";
+import { state, type SourceMode } from "../engine/store";
 import { setLiveMode, setSimMode, setSpeedScale } from "../engine/controls";
 import { applyPosition, enableGoogleTrafficLayer, livePoll } from "../engine/glympse";
 
 /* Controls panel — slides in from the left. Live source, manual GPS fallback,
    sim speed, Google TrafficLayer key, adapter log. */
 export function ControlsPanel({ open, onClose, log }: { open: boolean; onClose: () => void; log: string[] }) {
-  const [mode, setMode] = useState<"live" | "sim">(state.mode);
+  const [mode, setMode] = useState<SourceMode>(state.mode);
   const [lat, setLat] = useState("34.639104");
   const [lng, setLng] = useState("-118.746817");
   const [speed, setSpeed] = useState(state.speedScale);

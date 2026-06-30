@@ -6,6 +6,7 @@
 
 import { SPEED_K } from "./constants";
 import { applyPosition } from "./glympse";
+import { stepReplay } from "./replay";
 import { maybeFetchPlaces } from "./places";
 import { interpolateRoute } from "./routeMath";
 import { curvatureAtMile, hillAtMile } from "./routeContext";
@@ -32,6 +33,10 @@ export function initRuntime(d: RuntimeDeps): void {
 }
 
 export function stepPhysics(dt: number): void {
+  // replay: drive the camera along a recorded/real route segment
+  if (state.mode === "replay" && state.playing) {
+    stepReplay(dt);
+  }
   // sim / live drift (preserved behavior)
   if (state.mode === "sim" && state.playing) {
     state.simProgress = (state.simProgress + dt * 0.0032 * state.speedScale) % 1;
@@ -44,7 +49,8 @@ export function stepPhysics(dt: number): void {
   }
 
   // visual scroll + camera easing
-  if (state.playing) state.worldPos += (state.speedMph || 0) * SPEED_K * dt;
+  // replay drives worldPos itself (see stepReplay); avoid double-advancing it here.
+  if (state.playing && state.mode !== "replay") state.worldPos += (state.speedMph || 0) * SPEED_K * dt;
   const targetCurve = curvatureAtMile(state.routeMile + 0.15) * 18;
   state.camCurve += (targetCurve - state.camCurve) * Math.min(1, dt * 1.6);
   // camera follows the road grade smoothly so the near road never pops vertically

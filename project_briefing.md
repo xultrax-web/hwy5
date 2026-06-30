@@ -8,40 +8,51 @@
 ## 1. Executive Summary & Project Goal
 The primary objective of this project is to build an automated computer vision (CV) and data-logging pipeline that analyzes road curvature and lane offsets from consumer dashcam driving videos. 
 
-The study route is the **Interstate 5 (I-5) Northbound corridor** in California, starting from **Santa Clarita (Castaic / Los Angeles County)**, climbing over the mountainous **Grapevine (Tejon Pass)**, traveling across the flat **San Joaquin Valley**, and ending at the **I-580 Westbound Split near Tracy** (the turnoff to the San Francisco Bay Area). 
+The study route covers the **Interstate 5 (I-5) corridor** in California:
+*   **Northbound (Santa Clarita to Tracy):** Starting from **Santa Clarita (Castaic / Los Angeles County)**, climbing over the mountainous **Grapevine (Tejon Pass)**, traveling across the flat **San Joaquin Valley**, and ending at the **I-580 Westbound Split near Tracy** (the turnoff to the San Francisco Bay Area).
+*   **Southbound (Tracy to Santa Clarita):** Reversing the route, starting at the **I-580 transition near Tracy**, traveling southbound through the valley floor, and climbing back over the Grapevine into **Santa Clarita**.
 
 ---
 
 ## 2. What We Have Achieved So Far
 
 ### **A. Video Acquisition & Downloader Bypasses**
-*   **Segment 1 Video (Tejon Pass):** Downloaded and saved to `C:\Dev\hwy5\grapevine_real.mp4`.
-*   **Segment 2 Video (Central Valley Floor):** Downloaded and saved to `C:\Dev\hwy5\valley_real.mp4`.
-*   **Troubleshooting Bypasses:** 
-    *   YouTube actively blocks anonymous data-center scraping (used by public Cobalt instances) and command-line clients like `yt-dlp` running locally via DPAPI-protected Chromium cookies.
-    *   **The Dead URL Trap:** The initial video ID supplied for Part 2 (`kY_3t_7Rz5Y`) was a dead/deleted video, resulting in misleading `Video unavailable` and `HTTP 400` errors during downloader testing.
-    *   **Resolution:** We scraped live YouTube search results to locate the active Part 2 ID: **`_CWcp1FsI40`**. Once updated, public Cobalt API tunnels (specifically `https://api.cobalt.blackcat.sweeux.org`) successfully pulled the 525 MB stream at 360p resolution.
-    *   **Local Fallback Setup:** We also installed Firefox in the user scope as a local cookie fallback because Firefox does not enforce Windows DPAPI App-Bound encryption (allowing local `yt-dlp` to read session cookies).
+*   **Northbound Segment 1 Video (Tejon Pass):** Saved to `C:\Dev\hwy5\grapevine_real.mp4`.
+*   **Northbound Segment 2 Video (Central Valley Floor):** Saved to `C:\Dev\hwy5\valley_real.mp4`.
+*   **Southbound Video (Complete Route):** Saved to `C:\Dev\hwy5\southbound_real.mp4` (Neon Driving Tours, 4K 60fps HDR, 2.9 GB).
+*   **Bypass & Cookie Resolution:**
+    *   **Cobalt Duration Limit:** Cobalt API mirrors return `400 Bad Request` on videos longer than 3 hours (like the 5h 45m southbound video).
+    *   **The Firefox Cookie Hack:** We bypassed YouTube's `403 Forbidden` local downloader blocks by silently running Firefox to visit the watch URL, populating the local unencrypted SQLite cookie database, and passing `--cookies-from-browser firefox` to local `yt-dlp`.
 
-### **B. Frame Extraction**
-*   **Grapevine (Part 1):** Skipped the first 30 minutes of urban Los Angeles driving (`-ss 00:30:00`) to align the starting point with Santa Clarita/Castaic. Extracted 3,646 frames at 1 fps into `C:\Dev\hwy5\output\`.
-*   **Valley (Part 2):** Extracted 6,385 frames at 1 fps (from `00:00:00` to the I-580 transition at `01:46:25`) into `C:\Dev\hwy5\output_part2\`.
+### **B. Frame Organization & Restructuring**
+To ensure frame context and prevent collision, all extracted JPEGs have been moved and renamed into a clean, directional master directory structure:
+
+1.  **Northbound Master Frames (`C:\Dev\hwy5\frames\northbound\`):**
+    *   Contains **10,031 JPEGs** representing the continuous 1 fps drive from Santa Clarita to Tracy.
+    *   Part 1 and Part 2 are merged into a single continuous sequence.
+    *   Filenames are zero-padded to 5 digits: **`nb_frame_00001.jpg`** to **`nb_frame_10031.jpg`**.
+    *   These map 1-to-1 with the `frame_num` in the master Northbound CSV.
+2.  **Southbound Master Frames (`C:\Dev\hwy5\frames\southbound\`):**
+    *   Contains **2,852 JPEGs** representing the pre-sampled drive at 5-second intervals (`fps=0.2`) from I-580 Tracy to Santa Clarita.
+    *   Filenames are mapped to their true timeline second offset and zero-padded to 5 digits: **`sb_frame_00005.jpg`** to **`sb_frame_14260.jpg`** (increments of 5).
+    *   These map 1-to-1 with the `frame_num` and `time_sec` in the Southbound CSV.
 
 ### **C. Computer Vision Pipeline (Lane Detection & Metrics)**
 *   **Core CV Script (`lane_curvature.py`):**
-    *   Processes low-resolution (360p) compressed feeds.
+    *   Processes low-resolution (360p) or high-resolution (720p/1080p) compressed feeds.
     *   **Adaptive HSV Thresholding:** Dynamically calculates color mask ranges by locating peak intensity points in the image rather than using hardcoded bounds. This captures worn/faded yellow and white lane markings under varied lighting.
     *   **Dynamic Scaling:** Automatically scales margins, sliding window sizes, and minimum pixel requirements based on the resolution of the input frame.
     *   Outputs computed lane curvature radius (in meters) and lateral offset from the center of the lane.
 *   **Batch processing script (`batch_analyze.py`):**
-    *   Iterates through directories of JPEGs in 5-second sampling steps (every 5th frame).
+    *   Iterates through directories of JPEGs.
     *   Computes weather visibility (Clear, Overcast, Rain, Fog) by measuring image brightness and contrast peaks.
     *   Outputs a structured CSV file containing frame-by-frame telemetry.
 
 ### **D. Telemetry Databases Generated**
-1.  **[hwy5_telemetry.csv](file:///C:/Dev/hwy5/hwy5_telemetry.csv):** Telemetry dataset for Segment 1 (Santa Clarita to Southern Valley).
-2.  **[hwy5_telemetry_part2.csv](file:///C:/Dev/hwy5/hwy5_telemetry_part2.csv):** Telemetry dataset for Segment 2 (Valley to I-580).
-3.  **[hwy5_telemetry_master.csv](file:///C:/Dev/hwy5/hwy5_telemetry_master.csv):** A unified, continuous database of **2,007 rows** representing **167.1 minutes** (2h 47m) of continuous highway driving from Santa Clarita to Tracy.
+1.  **[hwy5_telemetry.csv](file:///C:/Dev/hwy5/hwy5_telemetry.csv):** Telemetry dataset for Northbound Segment 1 (Santa Clarita to Southern Valley).
+2.  **[hwy5_telemetry_part2.csv](file:///C:/Dev/hwy5/hwy5_telemetry_part2.csv):** Telemetry dataset for Northbound Segment 2 (Valley to I-580).
+3.  **[hwy5_telemetry_master.csv](file:///C:/Dev/hwy5/hwy5_telemetry_master.csv):** A unified, continuous Northbound database of **2,007 rows** representing **167.1 minutes** of driving.
+4.  **[hwy5_telemetry_southbound.csv](file:///C:/Dev/hwy5/hwy5_telemetry_southbound.csv):** Telemetry dataset for the complete Southbound route from I-580 to Santa Clarita (**2,852 rows** representing **237.6 minutes** of driving).
 
 ---
 
@@ -59,14 +70,15 @@ The project files are located in `C:\Dev\hwy5\`.
 
 ### **[batch_analyze.py](file:///C:/Dev/hwy5/batch_analyze.py)**
 *   *Key Logic:*
-    *   Parses command-line arguments: `--input-dir`, `--output-csv`, and `--step` (defaults to 5).
+    *   Parses command-line arguments: `--input-dir`, `--output-csv`, and `--step`.
     *   Computes weather categories using standard deviation (contrast) and mean (brightness) thresholds on the image.
     *   Logs progress in the console and saves rows incrementally to avoid data loss.
 
-### **[merge_telemetry.py](file:///C:/Dev/hwy5/merge_telemetry.py)**
+### **[process_southbound.py](file:///C:/Dev/hwy5/process_southbound.py)**
 *   *Key Logic:*
-    *   Reads `hwy5_telemetry.csv` and `hwy5_telemetry_part2.csv` using `pandas`.
-    *   Adjusts frame numbers and time markers of Part 2 so they form a continuous, unbroken chronology starting at Santa Clarita (`time_sec = 1`) and ending at Tracy (`time_sec = 10031`).
+    *   Extracts JPEGs at `fps=0.2` (1 frame every 5 seconds) to optimize disk I/O.
+    *   Runs the batch CV analysis with `--step 1` (since the frames are already pre-sampled).
+    *   Loads the resulting CSV, multiplies the `frame_num` and `time_sec` columns by 5 to scale them to true timeline seconds, and saves the final result.
 
 ---
 
@@ -87,7 +99,7 @@ The `comma2k19` dataset contains high-precision ground-truth driving logs (GNSS,
 
 ## 5. Next Steps & Planning for Codex
 
-Now that the master telemetry database for the I-5 Northbound corridor is successfully compiled, you should focus on the following goals:
+Now that both Northbound and Southbound datasets are compiled and structured, you should focus on the following goals:
 
 ### **Phase 1: Calibrate and Validate against comma2k19 Ground Truth**
 1.  **Run CV on comma2k19 Logs:**
@@ -105,14 +117,14 @@ Now that the master telemetry database for the I-5 Northbound corridor is succes
 
 ### **Phase 3: Telemetry Dashboard & Visualization**
 *   Build a lightweight dashboard interface (e.g. using Streamlit or HTML/JS) to:
-    *   Load `hwy5_telemetry_master.csv` as an interactive map or timeline.
-    *   Plot visibility levels, offset drifts, and sharp curves along the 300-mile corridor.
+    *   Load the master CSVs as an interactive map or timeline.
+    *   Plot visibility levels, offset drifts, and sharp curves along the corridor.
     *   Overlay estimated lane lines dynamically onto frames as they play.
 
 ---
 
 ### **Important Directory Links:**
 *   **Hwy 5 Project Base:** [C:\Dev\hwy5](file:///C:/Dev/hwy5/)
-*   **Hwy 5 Codebase:** [lane_curvature.py](file:///C:/Dev/hwy5/lane_curvature.py) | [batch_analyze.py](file:///C:/Dev/hwy5/batch_analyze.py) | [merge_telemetry.py](file:///C:/Dev/hwy5/merge_telemetry.py)
+*   **Hwy 5 Codebase:** [lane_curvature.py](file:///C:/Dev/hwy5/lane_curvature.py) | [batch_analyze.py](file:///C:/Dev/hwy5/batch_analyze.py) | [process_southbound.py](file:///C:/Dev/hwy5/process_southbound.py)
 *   **comma2k19 Base:** [C:\Dev\comma2k19](file:///C:/Dev/comma2k19/)
 *   **comma2k19 Codebase:** [utils/](file:///C:/Dev/comma2k19/utils/) | [notebooks/](file:///C:/Dev/comma2k19/notebooks/)

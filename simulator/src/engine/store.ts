@@ -7,7 +7,7 @@
    ============================================================ */
 
 export type ViewMode = "first" | "drone" | "overhead";
-export type SourceMode = "live" | "sim";
+export type SourceMode = "live" | "sim" | "replay";
 
 export interface LatLng {
   lat: number;
@@ -63,6 +63,8 @@ export interface SimState {
   camCurve: number;
   camElev: number;
   camHeadingEase: number;
+  replayDistM: number; // metres travelled along the active replay segment
+  elevationM: number; // current ground elevation (m above ellipsoid) from the replay/contract
   layers: Layers;
 }
 
@@ -94,6 +96,8 @@ export const state: SimState = {
   camCurve: 0,
   camElev: 0,
   camHeadingEase: 0,
+  replayDistM: 0,
+  elevationM: 0,
   layers: { traffic: true, milestones: true, intel: true, google: false },
 };
 

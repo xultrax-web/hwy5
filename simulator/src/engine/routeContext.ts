@@ -6,6 +6,7 @@ import { clamp, lerp, mix, noise1 } from "./mathUtils";
 import { interpolateRoute } from "./routeMath";
 import { route, type RouteNode } from "./routeData";
 import { state } from "./store";
+import { realCurvatureAtMile, realGradeElevationAtMile } from "./routeGeometry";
 
 export type Terrain = "urban" | "foothill" | "mountain" | "valley" | "hills" | "eastbay";
 
@@ -141,12 +142,20 @@ export function getRouteContext(): RouteContext {
 
 /* terrain elevation + curvature for the pseudo-3D corridor (now real 3D) */
 export function curvatureAtMile(mile: number): number {
+  // In replay mode, bend the road with the REAL OSM-verified I-5 centerline shape.
+  // Otherwise keep the original synthetic curve (the "zen" engine, untouched).
+  const real = realCurvatureAtMile(mile);
+  if (real !== null) return real;
   const h0 = headingAtMile(mile),
     h1 = headingAtMile(mile + 0.7);
   let d = ((h1 - h0 + 540) % 360) - 180;
   return clamp(d, -28, 28) * 0.3 + noise1(mile * 0.7) * 1.6;
 }
 export function hillAtMile(mile: number): number {
+  // In replay mode, climb/descend with the REAL terrain elevation profile;
+  // otherwise keep the synthetic hills (the "zen" fallback, untouched).
+  const real = realGradeElevationAtMile(mile);
+  if (real !== null) return real;
   const terr = terrainAt(mile);
   const amp =
     terr === "mountain"
